@@ -20,7 +20,6 @@
     object-fit: cover;
   }
 
-  /* 🔥 TIMER OVERLAY */
   #timer {
     position: fixed;
     top: 20px;
@@ -36,39 +35,49 @@
 
 <body>
 
-<video id="video" muted autoplay playsinline>
+<video id="video" muted autoplay playsinline loop>
   <source src="https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e">
 </video>
 
-<!-- 🔥 TIMER DISPLAY -->
 <div id="timer">00:45</div>
 
 <script>
   const video = document.getElementById("video");
   const timer = document.getElementById("timer");
 
-  // Force play in case browser blocks autoplay
+  const duration = 45; // seconds
+  let startTime = null;
+
+  // Ensure video plays
   video.play().catch(() => {
     console.log("Autoplay blocked — click screen");
   });
 
-  // Click anywhere to start if blocked
   document.body.addEventListener("click", () => {
     video.play();
   });
 
-  // 🔥 TIMER SYNCED TO VIDEO
-  const duration = 45; // seconds (adjust as needed)
+  // Start timer when video actually starts playing
+  video.addEventListener("playing", () => {
+    if (!startTime) {
+      startTime = Date.now();
+    }
+  });
 
-  video.addEventListener("timeupdate", () => {
-    const remain = Math.max(0, duration - Math.floor(video.currentTime));
+  // Update timer independently (so looping doesn't break it)
+  setInterval(() => {
+    if (!startTime) return;
+
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const remain = Math.max(0, duration - elapsed);
 
     const minutes = Math.floor(remain / 60);
     const seconds = remain % 60;
 
     timer.innerText =
       `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  });
+  }, 250);
+
 </script>
 
 </body>
