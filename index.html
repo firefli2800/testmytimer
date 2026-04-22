@@ -19,6 +19,18 @@
     height: 100vh;
     object-fit: cover;
   }
+
+  /* 🔥 TIMER OVERLAY */
+  #timer {
+    position: fixed;
+    top: 20px;
+    right: 30px;
+    color: white;
+    font-size: 80px;
+    font-family: Arial, sans-serif;
+    text-shadow: 0 0 10px black;
+    z-index: 10;
+  }
 </style>
 </head>
 
@@ -28,8 +40,12 @@
   <source src="https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e">
 </video>
 
+<!-- 🔥 TIMER DISPLAY -->
+<div id="timer">00:45</div>
+
 <script>
   const video = document.getElementById("video");
+  const timer = document.getElementById("timer");
 
   // Force play in case browser blocks autoplay
   video.play().catch(() => {
@@ -39,6 +55,19 @@
   // Click anywhere to start if blocked
   document.body.addEventListener("click", () => {
     video.play();
+  });
+
+  // 🔥 TIMER SYNCED TO VIDEO
+  const duration = 45; // seconds (adjust as needed)
+
+  video.addEventListener("timeupdate", () => {
+    const remain = Math.max(0, duration - Math.floor(video.currentTime));
+
+    const minutes = Math.floor(remain / 60);
+    const seconds = remain % 60;
+
+    timer.innerText =
+      `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   });
 </script>
 
