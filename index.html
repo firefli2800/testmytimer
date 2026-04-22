@@ -31,8 +31,11 @@
 
     label.textContent = clip.label;
     video.src = clip.src;
-    video.play().catch(() => { /* autoplay may wait for user gesture */ });
 
+video.addEventListener("loadeddata", () => {
+  video.play().catch(() => {});
+});
+    
     const started = performance.now();
     const pad = n => String(n).padStart(2, '0');
 
