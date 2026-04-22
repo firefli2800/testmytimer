@@ -1,51 +1,46 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Gym Display</title>
-  <style>
-    html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:system-ui,sans-serif}
-    #video{width:100vw;height:100vh;object-fit:contain;background:#000}
-    #hud{position:fixed;left:24px;bottom:24px;text-shadow:0 2px 8px #000}
-    #label{font-size:32px;font-weight:700}
-    #timer{font-size:64px;font-variant-numeric:tabular-nums}
-    #fs{position:fixed;right:24px;bottom:24px;z-index:10}
-  </style>
+<meta charset="utf-8">
+<title>Video Test</title>
+
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: black;
+  }
+
+  video {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+  }
+</style>
 </head>
+
 <body>
-  <video id="video" muted autoplay playsinline preload="auto"></video>
-  <div id="hud">
-    <div id="label">Warmup</div>
-    <div id="timer">00:45</div>
-  </div>
-  <button id="fs">Fullscreen</button>
 
-  <script type="module">
-    const clip = { label: 'Warmup', src: 'https://www.w3schools.com/html/mov_bbb.mp4', durationSec: 45 };
+<video id="video" muted autoplay playsinline>
+  <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4">
+</video>
 
-    const video = document.getElementById('video');
-    const label = document.getElementById('label');
-    const timer = document.getElementById('timer');
-    const fs = document.getElementById('fs');
+<script>
+  const video = document.getElementById("video");
 
-    label.textContent = clip.label;
-    video.src = clip.src;
+  // Force play in case browser blocks autoplay
+  video.play().catch(() => {
+    console.log("Autoplay blocked — click screen");
+  });
 
-video.addEventListener("loadeddata", () => {
-  video.play().catch(() => {});
-});
-    
-    const started = performance.now();
-    const pad = n => String(n).padStart(2, '0');
+  // Click anywhere to start if blocked
+  document.body.addEventListener("click", () => {
+    video.play();
+  });
+</script>
 
-    setInterval(() => {
-      const elapsed = Math.floor((performance.now() - started) / 1000);
-      const remain = Math.max(0, clip.durationSec - elapsed);
-      timer.textContent = `${pad(Math.floor(remain / 60))}:${pad(remain % 60)}`;
-    }, 250);
-
-    fs.onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
-  </script>
 </body>
 </html>
