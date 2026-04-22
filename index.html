@@ -2,13 +2,15 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Video Test</title>
+<title>Gym Display</title>
 
 <style>
   html, body {
     margin: 0;
     height: 100%;
     background: black;
+    color: white;
+    font-family: Arial, sans-serif;
   }
 
   video {
@@ -20,64 +22,118 @@
     object-fit: cover;
   }
 
-  #timer {
+  #overlay {
     position: fixed;
     top: 20px;
     right: 30px;
-    color: white;
-    font-size: 80px;
-    font-family: Arial, sans-serif;
-    text-shadow: 0 0 10px black;
+    text-align: right;
     z-index: 10;
+  }
+
+  #label {
+    font-size: 40px;
+    font-weight: bold;
+    text-shadow: 0 0 10px black;
+  }
+
+  #timer {
+    font-size: 80px;
+    text-shadow: 0 0 10px black;
   }
 </style>
 </head>
 
 <body>
 
-<video id="video" muted autoplay playsinline loop>
+<video id="video" muted playsinline loop>
   <source src="https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e">
 </video>
 
-<div id="timer">00:45</div>
+<div id="overlay">
+  <div id="label">WORK</div>
+  <div id="timer">00:45</div>
+</div>
 
 <script>
-  const video = document.getElementById("video");
-  const timer = document.getElementById("timer");
+const video = document.getElementById("video");
+const timer = document.getElementById("timer");
+const label = document.getElementById("label");
 
-  const duration = 45; // seconds
-  let startTime = null;
+// CONFIG
+const WORK_DURATION = 45;
+const REST_DURATION = 15;
 
-  // Ensure video plays
-  video.play().catch(() => {
-    console.log("Autoplay blocked — click screen");
-  });
+// STATE
+let phase = "work"; // "work" or "rest"
+let phaseStart = null;
 
-  document.body.addEventListener("click", () => {
+// Ensure video starts
+video.play().catch(() => {
+  document.body.addEventListener("click", () => video.play());
+});
+
+// Start first phase when video plays
+video.addEventListener("playing", () => {
+  if (!phaseStart) {
+    phaseStart = Date.now();
+  }
+});
+
+// MAIN LOOP
+setInterval(() => {
+  if (!phaseStart) return;
+
+  const elapsed = Math.floor((Date.now() - phaseStart) / 1000);
+
+  if (phase === "work") {
+    const remain = WORK_DURATION - elapsed;
+
+    // update UI
+    label.innerText = "WORK";
+    updateTimer(remain);
+
+    // ensure video is playing
+    video.style.display = "block";
     video.play();
-  });
 
-  // Start timer when video actually starts playing
-  video.addEventListener("playing", () => {
-    if (!startTime) {
-      startTime = Date.now();
+    if (remain <= 0) {
+      // switch to rest
+      phase = "rest";
+      phaseStart = Date.now();
+      video.pause();
+      video.style.display = "none";
     }
-  });
+  }
 
-  // Update timer independently (so looping doesn't break it)
-  setInterval(() => {
-    if (!startTime) return;
+  else if (phase === "rest") {
+    const remain = REST_DURATION - elapsed;
 
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    const remain = Math.max(0, duration - elapsed);
+    // update UI
+    label.innerText = "REST";
+    updateTimer(remain);
 
-    const minutes = Math.floor(remain / 60);
-    const seconds = remain % 60;
+    if (remain <= 0) {
+      // switch back to work
+      phase = "work";
+      phaseStart = Date.now();
 
-    timer.innerText =
-      `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  }, 250);
+      video.currentTime = 0;
+      video.style.display = "block";
+      video.play();
+    }
+  }
 
+}, 250);
+
+// TIMER FORMAT
+function updateTimer(seconds) {
+  const s = Math.max(0, seconds);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+
+  timer.innerText =
+    `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
 </script>
 
 </body>
