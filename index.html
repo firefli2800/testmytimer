@@ -58,7 +58,8 @@ const videos = {
   workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab"
 };
 
-const timeline = [];
+/* TIMELINE */
+const timeline=[];
 
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
@@ -73,6 +74,7 @@ function addBlock(n){
 addBlock(1);addBlock(2);addBlock(3);addBlock(4);
 
 let state=null;
+let lastSegmentIndex = -1;
 
 db.ref("state").on("value",snap=>{
   state=snap.val();
@@ -88,6 +90,7 @@ setInterval(()=>{
   let total = 0;
   let segment = null;
   let segmentElapsed = 0;
+  let currentSegmentIndex = -1;
 
   for(let i=0;i<timeline.length;i++){
     const seg = timeline[i];
@@ -95,6 +98,7 @@ setInterval(()=>{
     if(elapsed < total + seg.duration*1000){
       segment = seg;
       segmentElapsed = elapsed - total;
+      currentSegmentIndex = i;
       break;
     }
 
@@ -113,23 +117,32 @@ setInterval(()=>{
     return;
   }
 
+  /* REST / BREAK */
   if(segment.type === "rest" || segment.type === "break"){
     video.pause();
     video.style.display="none";
 
     center.innerText = segment.type==="rest" ? "REST" : "BREAK";
     center.style.display="block";
+
+    lastSegmentIndex = currentSegmentIndex;
     return;
   }
 
+  /* VIDEO SEGMENT */
   center.style.display="none";
   video.style.display="block";
 
   const src = videos[segment.video];
 
-  if(video.src !== src){
+  if(currentSegmentIndex !== lastSegmentIndex){
+    lastSegmentIndex = currentSegmentIndex;
+
+    video.pause();
     video.src = src;
-    video.currentTime = segmentElapsed/1000;
+    video.currentTime = 0;
+    video.load();
+
     video.play().catch(()=>{});
   }
 
