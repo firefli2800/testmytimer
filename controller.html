@@ -15,6 +15,7 @@ button{margin:5px;padding:10px}
 
 <button onclick="play()">Play</button>
 <button onclick="pause()">Pause</button>
+<button onclick="stopVideo()">Stop Video</button>
 <button onclick="reset()">Reset</button>
 <button onclick="next()">Next</button>
 <button onclick="prev()">Previous</button>
@@ -39,7 +40,8 @@ const db = firebase.database();
 function play(){
   db.ref("state").update({
     paused:false,
-    startTime:Date.now()
+    videoStopped:false,
+    startTime: Date.now()
   });
 }
 
@@ -49,11 +51,18 @@ function pause(){
   });
 }
 
+function stopVideo(){
+  db.ref("state").update({
+    videoStopped:true
+  });
+}
+
 function reset(){
   db.ref("state").set({
     index:0,
     startTime:Date.now(),
-    paused:false
+    paused:false,
+    videoStopped:false
   });
 }
 
@@ -62,7 +71,8 @@ function next(){
     const s=snap.val();
     db.ref("state").update({
       index:s.index+1,
-      startTime:Date.now()
+      startTime:Date.now(),
+      videoStopped:false
     });
   });
 }
@@ -72,7 +82,8 @@ function prev(){
     const s=snap.val();
     db.ref("state").update({
       index:Math.max(0,s.index-1),
-      startTime:Date.now()
+      startTime:Date.now(),
+      videoStopped:false
     });
   });
 }
