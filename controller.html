@@ -78,11 +78,9 @@ function findSegmentIndex(elapsedMs) {
 
 function segmentStartMs(index) {
   let cursor = 0;
-
   for (let i = 0; i < index; i += 1) {
     cursor += durations[i] * 1000;
   }
-
   return cursor;
 }
 
