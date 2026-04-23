@@ -45,15 +45,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* VIDEO */
 const video = document.getElementById("video");
-
-/* UI */
 const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const center = document.getElementById("center");
 
-/* VIDEOS */
 const videos = {
   warmup:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   workout1:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
@@ -62,8 +58,7 @@ const videos = {
   workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab"
 };
 
-/* TIMELINE */
-const timeline=[];
+const timeline = [];
 
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
@@ -77,14 +72,12 @@ function addBlock(n){
 
 addBlock(1);addBlock(2);addBlock(3);addBlock(4);
 
-/* STATE */
 let state=null;
 
 db.ref("state").on("value",snap=>{
   state=snap.val();
 });
 
-/* MAIN LOOP */
 setInterval(()=>{
   if(!state) return;
 
@@ -99,30 +92,28 @@ setInterval(()=>{
   for(let i=0;i<timeline.length;i++){
     const seg = timeline[i];
 
-    if(elapsed < total + (seg.duration * 1000)){
+    if(elapsed < total + seg.duration*1000){
       segment = seg;
       segmentElapsed = elapsed - total;
       break;
     }
 
-    total += seg.duration * 1000;
+    total += seg.duration*1000;
   }
 
   if(!segment) return;
 
-  const remain = segment.duration - Math.floor(segmentElapsed / 1000);
+  const remain = segment.duration - Math.floor(segmentElapsed/1000);
 
   label.innerText = segment.label || "";
   timer.innerText = format(remain);
 
-  /* PAUSE */
   if(state.paused){
     video.pause();
     return;
   }
 
-  /* REST / BREAK */
-  if(segment.type==="rest" || segment.type==="break"){
+  if(segment.type === "rest" || segment.type === "break"){
     video.pause();
     video.style.display="none";
 
@@ -131,7 +122,6 @@ setInterval(()=>{
     return;
   }
 
-  /* VIDEO */
   center.style.display="none";
   video.style.display="block";
 
@@ -139,7 +129,7 @@ setInterval(()=>{
 
   if(video.src !== src){
     video.src = src;
-    video.currentTime = segmentElapsed / 1000;
+    video.currentTime = segmentElapsed/1000;
     video.play().catch(()=>{});
   }
 
