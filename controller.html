@@ -29,10 +29,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
   databaseURL: "https://timer-app-30e7d-default-rtdb.firebaseio.com",
-  projectId: "timer-app-30e7d",
-  storageBucket: "timer-app-30e7d.firebasestorage.app",
-  messagingSenderId: "715490093829",
-  appId: "1:715490093829:web:e4591166f3be6d9722e56c"
+  projectId: "timer-app-30e7d"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -46,7 +43,6 @@ function play(){
 
     db.ref("state").update({
       paused:false,
-      videoStopped:false,
       startTime:newStart
     });
   });
@@ -56,6 +52,9 @@ function play(){
 function pause(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
+
+    if(s.paused) return;
+
     const elapsed = Date.now() - s.startTime;
 
     db.ref("state").update({
@@ -98,8 +97,8 @@ function next(){
     db.ref("state").update({
       index:s.index+1,
       startTime:Date.now(),
-      videoStopped:false,
-      elapsed:0
+      elapsed:0,
+      videoStopped:false
     });
   });
 }
@@ -112,8 +111,8 @@ function prev(){
     db.ref("state").update({
       index:Math.max(0,s.index-1),
       startTime:Date.now(),
-      videoStopped:false,
-      elapsed:0
+      elapsed:0,
+      videoStopped:false
     });
   });
 }
