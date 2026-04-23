@@ -37,53 +37,77 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+/* PLAY */
 function play(){
-  db.ref("state").update({
-    paused:false,
-    videoStopped:false,
-    startTime: Date.now()
+  db.ref("state").once("value", snap=>{
+    const s = snap.val();
+
+    const newStart = Date.now() - (s.elapsed || 0);
+
+    db.ref("state").update({
+      paused:false,
+      videoStopped:false,
+      startTime:newStart
+    });
   });
 }
 
+/* PAUSE */
 function pause(){
-  db.ref("state").update({
-    paused:true
+  db.ref("state").once("value", snap=>{
+    const s = snap.val();
+
+    const elapsed = Date.now() - s.startTime;
+
+    db.ref("state").update({
+      paused:true,
+      elapsed:elapsed
+    });
   });
 }
 
+/* STOP VIDEO */
 function stopVideo(){
   db.ref("state").update({
     videoStopped:true
   });
 }
 
+/* RESET */
 function reset(){
   db.ref("state").set({
     index:0,
     startTime:Date.now(),
     paused:false,
-    videoStopped:false
+    videoStopped:false,
+    elapsed:0
   });
 }
 
+/* NEXT */
 function next(){
   db.ref("state").once("value",snap=>{
     const s=snap.val();
+
     db.ref("state").update({
       index:s.index+1,
       startTime:Date.now(),
-      videoStopped:false
+      videoStopped:false,
+      elapsed:0
     });
   });
 }
 
+/* PREV */
 function prev(){
   db.ref("state").once("value",snap=>{
     const s=snap.val();
+
     db.ref("state").update({
       index:Math.max(0,s.index-1),
       startTime:Date.now(),
-      videoStopped:false
+      videoStopped:false,
+      elapsed:0
     });
   });
 }
