@@ -46,7 +46,7 @@ video{
 </head>
 <body>
 
-<video id="video" muted playsinline preload="auto"></video>
+<video id="video" muted playsinline preload="auto" loop></video>
 
 <div id="overlay">
   <div id="label"></div>
@@ -79,7 +79,6 @@ const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const center = document.getElementById("center");
 
-// Replace these placeholder URLs with your final rendered station videos.
 const videoSources = {
   warmup: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   cooldown: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
@@ -93,8 +92,6 @@ const videoSources = {
   station3_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9"
 };
 
-// Blocks 1-3 keep the same station videos so people rotate stations.
-// Blocks 4-6 switch all stations to the second movement set.
 const stationVideos = [
   ["station1_set1", "station2_set1", "station3_set1"],
   ["station1_set1", "station2_set1", "station3_set1"],
@@ -250,7 +247,7 @@ function buildMediaRequest(info) {
         return {
           showVideo: true,
           sourceUrl: getVideoUrl(nextVideoKey),
-          contextKey: `preview:${index}:${nextVideoKey}`,
+          contextKey: `preview:${index}`,
           seekSeconds: 0,
           shouldPlay: !state.paused && !finished,
           centerText: "UPCOMING\nMOVEMENT",
@@ -296,7 +293,7 @@ function seekVideo(seconds) {
   try {
     video.currentTime = clampSeek(seconds);
   } catch (error) {
-    // Ignore seek timing errors while metadata is still loading.
+    // ignore early seek timing issues
   }
 }
 
@@ -330,7 +327,9 @@ function loadSource(request) {
 function syncVideo(request) {
   const sourceChanged = request.sourceUrl !== activeSource;
   const contextChanged = request.contextKey !== activeContextKey;
+
   activeContextKey = request.contextKey;
+  video.loop = true;
 
   if (sourceChanged) {
     activeSource = request.sourceUrl;
@@ -339,17 +338,14 @@ function syncVideo(request) {
   }
 
   if (contextChanged) {
-    // Fresh start for every segment / preview boundary.
     seekVideo(request.seekSeconds);
-  } else {
-    const tolerance = request.shouldPlay ? 1 : 0.25;
-    if (Math.abs(video.currentTime - request.seekSeconds) > tolerance) {
-      seekVideo(request.seekSeconds);
-    }
   }
 
-  if (request.shouldPlay) safePlay();
-  else video.pause();
+  if (request.shouldPlay) {
+    if (video.paused) safePlay();
+  } else {
+    video.pause();
+  }
 }
 
 function render() {
