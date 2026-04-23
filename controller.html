@@ -16,6 +16,7 @@ button{margin:5px;padding:10px}
 <button onclick="play()">Play</button>
 <button onclick="pause()">Pause</button>
 <button onclick="stopVideo()">Stop Video</button>
+<button onclick="resumeVideo()">Resume Video</button>
 <button onclick="reset()">Reset</button>
 <button onclick="next()">Next</button>
 <button onclick="prev()">Previous</button>
@@ -41,7 +42,6 @@ const db = firebase.database();
 function play(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
-
     const newStart = Date.now() - (s.elapsed || 0);
 
     db.ref("state").update({
@@ -56,7 +56,6 @@ function play(){
 function pause(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
-
     const elapsed = Date.now() - s.startTime;
 
     db.ref("state").update({
@@ -70,6 +69,13 @@ function pause(){
 function stopVideo(){
   db.ref("state").update({
     videoStopped:true
+  });
+}
+
+/* RESUME VIDEO */
+function resumeVideo(){
+  db.ref("state").update({
+    videoStopped:false
   });
 }
 
