@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <title>Controller</title>
-
 <style>
 body{font-family:Arial;padding:20px}
 button{margin:5px;padding:10px}
@@ -17,7 +16,6 @@ button{margin:5px;padding:10px}
 <button onclick="play()">Play</button>
 <button onclick="pause()">Pause</button>
 <button onclick="reset()">Reset</button>
-<button onclick="stop()">Stop Video</button>
 <button onclick="next()">Next</button>
 <button onclick="prev()">Previous</button>
 
@@ -26,10 +24,13 @@ button{margin:5px;padding:10px}
 
 <script>
 const firebaseConfig = {
-  apiKey: "YOUR_KEY",
-  authDomain: "YOUR_DOMAIN",
-  databaseURL: "YOUR_DB_URL",
-  projectId: "YOUR_PROJECT"
+  apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
+  authDomain: "timer-app-30e7d.firebaseapp.com",
+  databaseURL: "https://timer-app-30e7d-default-rtdb.firebaseio.com",
+  projectId: "timer-app-30e7d",
+  storageBucket: "timer-app-30e7d.firebasestorage.app",
+  messagingSenderId: "715490093829",
+  appId: "1:715490093829:web:e4591166f3be6d9722e56c"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -38,7 +39,7 @@ const db = firebase.database();
 function play(){
   db.ref("state").update({
     paused:false,
-    startTime: Date.now()
+    startTime:Date.now()
   });
 }
 
@@ -56,28 +57,22 @@ function reset(){
   });
 }
 
-function stop(){
-  db.ref("state").update({
-    stop:true
-  });
-}
-
 function next(){
   db.ref("state").once("value",snap=>{
-    let s=snap.val();
+    const s=snap.val();
     db.ref("state").update({
-      index: s.index+1,
-      startTime: Date.now()
+      index:s.index+1,
+      startTime:Date.now()
     });
   });
 }
 
 function prev(){
   db.ref("state").once("value",snap=>{
-    let s=snap.val();
+    const s=snap.val();
     db.ref("state").update({
-      index: Math.max(0, s.index-1),
-      startTime: Date.now()
+      index:Math.max(0,s.index-1),
+      startTime:Date.now()
     });
   });
 }
