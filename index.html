@@ -3,27 +3,50 @@
 <head>
 <meta charset="utf-8">
 <title>Display</title>
-
 <style>
-html,body{margin:0;height:100%;background:black;color:white;font-family:Arial}
-video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
-#overlay{position:fixed;top:20px;right:30px;z-index:10}
-#label{font-size:40px}
-#timer{font-size:80px}
+html,body{
+  margin:0;
+  height:100%;
+  background:#000;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  overflow:hidden;
+}
+video{
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  object-fit:cover;
+  background:#000;
+}
+#overlay{
+  position:fixed;
+  top:20px;
+  right:30px;
+  z-index:20;
+  text-align:right;
+}
+#label{font-size:34px}
+#timer{font-size:76px;line-height:1}
 #center{
   position:fixed;
-  top:50%;left:50%;
+  top:50%;
+  left:50%;
   transform:translate(-50%,-50%);
-  font-size:80px;
+  z-index:30;
+  font-size:76px;
+  line-height:1.1;
   text-align:center;
+  white-space:pre-line;
+  text-shadow:0 0 24px rgba(0,0,0,.65);
   display:none;
 }
 </style>
 </head>
-
 <body>
 
-<video id="video" muted playsinline></video>
+<video id="video" muted playsinline preload="auto"></video>
 
 <div id="overlay">
   <div id="label"></div>
@@ -46,158 +69,322 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+const params = new URLSearchParams(window.location.search);
+const requestedScreen = parseInt(params.get("screen"), 10);
+const screenNumber = requestedScreen >= 1 && requestedScreen <= 3 ? requestedScreen : 1;
+const screenIndex = screenNumber - 1;
+
 const video = document.getElementById("video");
 const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const center = document.getElementById("center");
 
-const videos = {
-  warmup:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout1:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout2:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  workout3:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-  workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
-  stretch:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
+// Replace these placeholder URLs with your final rendered station videos.
+const videoSources = {
+  warmup: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
+  cooldown: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
+
+  station1_set1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
+  station2_set1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
+  station3_set1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
+
+  station1_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
+  station2_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
+  station3_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9"
 };
 
-/* TIMELINE */
-const timeline=[];
+// Blocks 1-3 keep the same station videos so people rotate stations.
+// Blocks 4-6 switch all stations to the second movement set.
+const stationVideos = [
+  ["station1_set1", "station2_set1", "station3_set1"],
+  ["station1_set1", "station2_set1", "station3_set1"],
+  ["station1_set1", "station2_set1", "station3_set1"],
+  ["station1_set2", "station2_set2", "station3_set2"],
+  ["station1_set2", "station2_set2", "station3_set2"],
+  ["station1_set2", "station2_set2", "station3_set2"]
+];
 
-timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
+const timeline = buildTimeline();
+const totalDurationMs = timeline.reduce((sum, segment) => sum + (segment.duration * 1000), 0);
 
-function addBlock(n){
-  for(let i=1;i<=3;i++){
-    timeline.push({type:"video",label:`WORK ${n}-${i}`,duration:45,video:`workout${n}`});
-    timeline.push({type:"rest",duration:15});
-  }
-  timeline.push({type:"break",duration:60});
+let state = defaultState();
+let activeSource = "";
+let activeContextKey = "";
+let pendingLoadId = 0;
+
+function defaultState() {
+  return {
+    startTime: Date.now(),
+    paused: true,
+    elapsed: 0
+  };
 }
 
-addBlock(1);addBlock(2);addBlock(3);addBlock(4);
+function buildTimeline() {
+  const segments = [
+    { kind: "video", duration: 180, label: "WARMUP", directVideoKey: "warmup" }
+  ];
 
-timeline.push({
-  type:"video",
-  label:"STRETCH",
-  duration:360,
-  video:"stretch"
-});
+  for (let blockIndex = 0; blockIndex < 6; blockIndex += 1) {
+    for (let roundIndex = 1; roundIndex <= 3; roundIndex += 1) {
+      segments.push({
+        kind: "video",
+        duration: 45,
+        blockIndex,
+        roundIndex,
+        label: `ROUND ${roundIndex} OF 3`
+      });
 
-let state=null;
-let lastSegmentIndex = -1;
-
-db.ref("state").on("value",snap=>{
-  state=snap.val();
-});
-
-setInterval(()=>{
-  if(!state) return;
-
-  let elapsed = state.paused
-    ? state.elapsed
-    : (Date.now() - state.startTime);
-
-  let total = 0;
-  let segment = null;
-  let segmentElapsed = 0;
-  let currentSegmentIndex = -1;
-
-  for(let i=0;i<timeline.length;i++){
-    const seg = timeline[i];
-
-    if(elapsed < total + seg.duration*1000){
-      segment = seg;
-      segmentElapsed = elapsed - total;
-      currentSegmentIndex = i;
-      break;
+      segments.push({
+        kind: "rest",
+        duration: 15,
+        blockIndex,
+        roundIndex,
+        label: "REST"
+      });
     }
 
-    total += seg.duration*1000;
+    segments.push({
+      kind: "break",
+      duration: 60,
+      blockIndex,
+      label: "BREAK"
+    });
   }
 
-  if(!segment) return;
+  segments.push({
+    kind: "video",
+    duration: 180,
+    label: "STRETCH",
+    directVideoKey: "cooldown"
+  });
 
-  const remain = segment.duration - Math.floor(segmentElapsed/1000);
+  return segments;
+}
 
-  label.innerText = segment.label || "";
-  timer.innerText = format(remain);
+function getElapsedMs() {
+  const raw = state.paused
+    ? (state.elapsed || 0)
+    : (Date.now() - (state.startTime || Date.now()));
 
-  if(state.paused){
-    video.pause();
-    return;
+  return Math.max(0, Math.min(raw, totalDurationMs));
+}
+
+function locateSegment(elapsedMs) {
+  if (elapsedMs >= totalDurationMs) {
+    const lastIndex = timeline.length - 1;
+    return {
+      index: lastIndex,
+      segment: timeline[lastIndex],
+      segmentElapsedMs: timeline[lastIndex].duration * 1000,
+      finished: true
+    };
   }
 
-  /* REST */
-  if(segment.type === "rest"){
-    video.pause();
-    video.style.display="none";
+  let cursor = 0;
 
-    center.innerText = "REST";
-    center.style.display="block";
+  for (let i = 0; i < timeline.length; i += 1) {
+    const size = timeline[i].duration * 1000;
 
-    lastSegmentIndex = currentSegmentIndex;
-    return;
+    if (elapsedMs < cursor + size) {
+      return {
+        index: i,
+        segment: timeline[i],
+        segmentElapsedMs: elapsedMs - cursor,
+        finished: false
+      };
+    }
+
+    cursor += size;
   }
 
-  /* BREAK WITH VIDEO PREVIEW */
-  if(segment.type === "break"){
+  return {
+    index: timeline.length - 1,
+    segment: timeline[timeline.length - 1],
+    segmentElapsedMs: 0,
+    finished: false
+  };
+}
 
-    if(remain <= 15){
-      const nextSeg = timeline[currentSegmentIndex + 1];
+function getSegmentVideoKey(segment) {
+  if (segment.directVideoKey) return segment.directVideoKey;
 
-      if(nextSeg && nextSeg.type === "video"){
-        const src = videos[nextSeg.video];
+  const blockMap = stationVideos[segment.blockIndex] || stationVideos[0];
+  return blockMap[screenIndex] || blockMap[0];
+}
 
-        // 🔥 Load preview video ONCE
-        if(currentSegmentIndex !== lastSegmentIndex){
-          video.pause();
-          video.src = src;
-          video.currentTime = 0;
-          video.load();
-          video.play().catch(()=>{});
-        }
+function getVideoUrl(videoKey) {
+  return videoSources[videoKey] || videoSources.warmup;
+}
 
-        video.style.display="block";
+function getNextVideoInfo(fromIndex) {
+  for (let i = fromIndex + 1; i < timeline.length; i += 1) {
+    if (timeline[i].kind === "video") {
+      return { index: i, segment: timeline[i] };
+    }
+  }
 
-        center.innerText = "UPCOMING MOVEMENT";
-        center.style.display="block";
+  return null;
+}
+
+function buildMediaRequest(info) {
+  const { index, segment, segmentElapsedMs, finished } = info;
+  const remain = Math.max(0, segment.duration - Math.floor(segmentElapsedMs / 1000));
+
+  if (segment.kind === "rest") {
+    return {
+      showVideo: false,
+      centerText: "REST",
+      labelText: segment.label,
+      remain
+    };
+  }
+
+  if (segment.kind === "break") {
+    if (remain <= 15) {
+      const nextVideoInfo = getNextVideoInfo(index);
+
+      if (nextVideoInfo) {
+        const nextVideoKey = getSegmentVideoKey(nextVideoInfo.segment);
+
+        return {
+          showVideo: true,
+          sourceUrl: getVideoUrl(nextVideoKey),
+          contextKey: `preview:${index}:${nextVideoKey}`,
+          seekSeconds: 0,
+          shouldPlay: !state.paused && !finished,
+          centerText: "UPCOMING\nMOVEMENT",
+          labelText: "BREAK",
+          remain
+        };
       }
-
-    } else {
-      video.pause();
-      video.style.display="none";
-
-      center.innerText = "BREAK";
-      center.style.display="block";
     }
 
-    lastSegmentIndex = currentSegmentIndex;
+    return {
+      showVideo: false,
+      centerText: "BREAK",
+      labelText: "BREAK",
+      remain
+    };
+  }
+
+  const videoKey = getSegmentVideoKey(segment);
+
+  return {
+    showVideo: true,
+    sourceUrl: getVideoUrl(videoKey),
+    contextKey: `segment:${index}:${videoKey}`,
+    seekSeconds: segmentElapsedMs / 1000,
+    shouldPlay: !state.paused && !finished,
+    centerText: "",
+    labelText: segment.label,
+    remain
+  };
+}
+
+function clampSeek(seconds) {
+  if (Number.isFinite(video.duration) && video.duration > 0) {
+    return Math.max(0, Math.min(seconds, Math.max(0, video.duration - 0.1)));
+  }
+
+  return Math.max(0, seconds);
+}
+
+function seekVideo(seconds) {
+  if (!Number.isFinite(seconds)) return;
+
+  try {
+    video.currentTime = clampSeek(seconds);
+  } catch (error) {
+    // Ignore seek timing errors while metadata is still loading.
+  }
+}
+
+function safePlay() {
+  video.play().catch(() => {});
+}
+
+function loadSource(request) {
+  pendingLoadId += 1;
+  const loadId = pendingLoadId;
+
+  const ready = () => {
+    video.removeEventListener("loadedmetadata", ready);
+    video.removeEventListener("canplay", ready);
+
+    if (loadId !== pendingLoadId) return;
+
+    seekVideo(request.seekSeconds);
+
+    if (request.shouldPlay) safePlay();
+    else video.pause();
+  };
+
+  video.pause();
+  video.addEventListener("loadedmetadata", ready);
+  video.addEventListener("canplay", ready);
+  video.src = request.sourceUrl;
+  video.load();
+}
+
+function syncVideo(request) {
+  const sourceChanged = request.sourceUrl !== activeSource;
+  const contextChanged = request.contextKey !== activeContextKey;
+  activeContextKey = request.contextKey;
+
+  if (sourceChanged) {
+    activeSource = request.sourceUrl;
+    loadSource(request);
     return;
   }
 
-  /* VIDEO SEGMENT */
-  center.style.display="none";
-  video.style.display="block";
-
-  const src = videos[segment.video];
-
-  if(currentSegmentIndex !== lastSegmentIndex){
-    lastSegmentIndex = currentSegmentIndex;
-
-    video.pause();
-    video.src = src;
-    video.currentTime = 0;
-    video.load();
-    video.play().catch(()=>{});
+  if (contextChanged) {
+    // Fresh start for every segment / preview boundary.
+    seekVideo(request.seekSeconds);
+  } else {
+    const tolerance = request.shouldPlay ? 1 : 0.25;
+    if (Math.abs(video.currentTime - request.seekSeconds) > tolerance) {
+      seekVideo(request.seekSeconds);
+    }
   }
 
-},250);
-
-function format(s){
-  s=Math.max(0,s);
-  const m=Math.floor(s/60);
-  const sec=s%60;
-  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  if (request.shouldPlay) safePlay();
+  else video.pause();
 }
+
+function render() {
+  const info = locateSegment(getElapsedMs());
+  const request = buildMediaRequest(info);
+
+  label.innerText = request.labelText;
+  timer.innerText = format(request.remain);
+  center.innerText = request.centerText || "";
+  center.style.display = request.centerText ? "block" : "none";
+
+  if (!request.showVideo) {
+    video.pause();
+    video.style.display = "none";
+    return;
+  }
+
+  video.style.display = "block";
+  syncVideo(request);
+}
+
+function format(totalSeconds) {
+  const safe = Math.max(0, totalSeconds);
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+db.ref("state").on("value", (snap) => {
+  state = { ...defaultState(), ...(snap.val() || {}) };
+  render();
+});
+
+render();
+setInterval(render, 250);
 </script>
 
 </body>
