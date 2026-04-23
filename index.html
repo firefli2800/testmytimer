@@ -14,7 +14,7 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
   position:fixed;
   top:50%;left:50%;
   transform:translate(-50%,-50%);
-  font-size:100px;
+  font-size:80px;
   text-align:center;
   display:none;
 }
@@ -54,9 +54,9 @@ const center = document.getElementById("center");
 const videos = {
   warmup:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   workout1:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout2:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  workout3:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-  workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
+  workout2:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
+  workout3:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
+  workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
   stretch:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
 };
 
@@ -138,26 +138,43 @@ setInterval(()=>{
     return;
   }
 
-  /* BREAK WITH PREVIEW */
+  /* BREAK WITH VIDEO PREVIEW */
   if(segment.type === "break"){
-    video.pause();
-    video.style.display="none";
 
-    // 🔥 PREVIEW NEXT EXERCISE
     if(remain <= 15){
       const nextSeg = timeline[currentSegmentIndex + 1];
-      center.innerText = nextSeg?.label || "NEXT";
-    } else {
-      center.innerText = "BREAK";
-    }
 
-    center.style.display="block";
+      if(nextSeg && nextSeg.type === "video"){
+        const src = videos[nextSeg.video];
+
+        // 🔥 Load preview video ONCE
+        if(currentSegmentIndex !== lastSegmentIndex){
+          video.pause();
+          video.src = src;
+          video.currentTime = 0;
+          video.load();
+          video.play().catch(()=>{});
+        }
+
+        video.style.display="block";
+
+        center.innerText = "UPCOMING MOVEMENT";
+        center.style.display="block";
+      }
+
+    } else {
+      video.pause();
+      video.style.display="none";
+
+      center.innerText = "BREAK";
+      center.style.display="block";
+    }
 
     lastSegmentIndex = currentSegmentIndex;
     return;
   }
 
-  /* VIDEO */
+  /* VIDEO SEGMENT */
   center.style.display="none";
   video.style.display="block";
 
@@ -170,7 +187,6 @@ setInterval(()=>{
     video.src = src;
     video.currentTime = 0;
     video.load();
-
     video.play().catch(()=>{});
   }
 
