@@ -4,20 +4,19 @@
 <meta charset="utf-8">
 <title>Controller</title>
 <style>
-body{font-family:Arial;padding:20px}
-button{margin:5px;padding:10px}
+body{font-family:Arial,sans-serif;padding:20px}
+button{margin:5px;padding:10px 14px;font-size:16px}
 </style>
 </head>
-
 <body>
 
 <h2>Controller</h2>
 
 <button onclick="play()">Play</button>
-<button onclick="pause()">Pause</button>
-<button onclick="reset()">Reset</button>
-<button onclick="next()">Next</button>
+<button onclick="pauseTimer()">Pause</button>
+<button onclick="resetTimer()">Reset</button>
 <button onclick="prev()">Previous</button>
+<button onclick="next()">Next</button>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -33,91 +32,123 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const durations = [
-  360,
-  45,15,45,15,45,15,60,
-  45,15,45,15,45,15,60,
-  45,15,45,15,45,15,60,
-  45,15,45,15,45,15,60,
-  360
-];
+const BLOCK_PATTERN = [45, 15, 45, 15, 45, 15, 60];
+const durations = [180, ...Array.from({ length: 6 }, () => BLOCK_PATTERN).flat(), 180];
 
-function play(){
-  db.ref("state").once("value", snap=>{
-    const s = snap.val();
-    const newStart = Date.now() - (s.elapsed || 0);
+function defaultState() {
+  return {
+    startTime: Date.now(),
+    paused: true,
+    elapsed: 0
+  };
+}
 
+function withState(callback) {
+  db.ref("state").once("value", (snap) => {
+    callback({ ...defaultState(), ...(snap.val() || {}) });
+  });
+}
+
+function totalDurationMs() {
+  return durations.reduce((sum, seconds) => sum + (seconds * 1000), 0);
+}
+
+function clampElapsed(ms) {
+  return Math.max(0, Math.min(ms, totalDurationMs()));
+}
+
+function currentElapsedMs(state) {
+  const raw = state.paused
+    ? state.elapsed
+    : (Date.now() - state.startTime);
+
+  return clampElapsed(raw || 0);
+}
+
+function findSegmentIndex(elapsedMs) {
+  let cursor = 0;
+
+  for (let i = 0; i < durations.length; i += 1) {
+    cursor += durations[i] * 1000;
+    if (elapsedMs < cursor) return i;
+  }
+
+  return durations.length - 1;
+}
+
+function segmentStartMs(index) {
+  let cursor = 0;
+
+  for (let i = 0; i < index; i += 1) {
+    cursor += durations[i] * 1000;
+  }
+
+  return cursor;
+}
+
+function seekTo(targetMs) {
+  withState((state) => {
+    const clamped = clampElapsed(targetMs);
+    const updates = {
+      startTime: Date.now() - clamped,
+      paused: state.paused
+    };
+
+    if (state.paused) updates.elapsed = clamped;
+
+    db.ref("state").update(updates);
+  });
+}
+
+function play() {
+  withState((state) => {
     db.ref("state").update({
-      paused:false,
-      startTime:newStart
+      paused: false,
+      startTime: Date.now() - (state.elapsed || 0)
     });
   });
 }
 
-function pause(){
-  db.ref("state").once("value", snap=>{
-    const s = snap.val();
-    if(s.paused) return;
-
-    const elapsed = Date.now() - s.startTime;
+function pauseTimer() {
+  withState((state) => {
+    if (state.paused) return;
 
     db.ref("state").update({
-      paused:true,
-      elapsed:elapsed
+      paused: true,
+      elapsed: currentElapsedMs(state)
     });
   });
 }
 
-function reset(){
+function resetTimer() {
   db.ref("state").set({
-    startTime:Date.now(),
-    paused:true,
-    elapsed:0
+    startTime: Date.now(),
+    paused: true,
+    elapsed: 0
   });
 }
 
-function next(){
-  db.ref("state").once("value", snap=>{
-    const s = snap.val();
+function next() {
+  withState((state) => {
+    const elapsedMs = currentElapsedMs(state);
+    const currentIndex = findSegmentIndex(elapsedMs);
+    const targetMs = currentIndex >= durations.length - 1
+      ? totalDurationMs()
+      : segmentStartMs(currentIndex + 1);
 
-    let elapsed = s.paused ? s.elapsed : (Date.now() - s.startTime);
-
-    let total = 0;
-    let i = 0;
-
-    for(; i < durations.length; i++){
-      if(elapsed < total + durations[i]*1000) break;
-      total += durations[i]*1000;
-    }
-
-    total += durations[i] * 1000;
-
-    db.ref("state").update({
-      startTime: Date.now() - total,
-      paused:false
-    });
+    seekTo(targetMs);
   });
 }
 
-function prev(){
-  db.ref("state").once("value", snap=>{
-    const s = snap.val();
+function prev() {
+  withState((state) => {
+    const elapsedMs = currentElapsedMs(state);
+    const currentIndex = findSegmentIndex(elapsedMs);
+    const targetMs = currentIndex <= 0
+      ? 0
+      : segmentStartMs(currentIndex - 1);
 
-    let elapsed = s.paused ? s.elapsed : (Date.now() - s.startTime);
-
-    let total = 0;
-    let prevStart = 0;
-
-    for(let i=0;i<durations.length;i++){
-      if(elapsed < total + durations[i]*1000) break;
-      prevStart = total;
-      total += durations[i]*1000;
-    }
-
-    db.ref("state").update({
-      startTime: Date.now() - prevStart,
-      paused:false
-    });
+    seekTo(targetMs);
   });
 }
 </script>
