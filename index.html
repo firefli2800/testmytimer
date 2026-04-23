@@ -48,6 +48,7 @@ const db = firebase.database();
 /* 🔥 VIDEO ELEMENTS */
 const videoA = document.getElementById("videoA");
 const videoB = document.getElementById("videoB");
+
 let activeVideo = "A";
 
 function getCurrentVideo(){
@@ -65,7 +66,7 @@ function switchVideo(){
   current.style.display = "none";
   next.style.display = "block";
 
-  next.currentTime = 0;
+  next.currentTime = 0; // 🔥 restart clean
   next.play().catch(()=>{});
 
   activeVideo = activeVideo === "A" ? "B" : "A";
@@ -81,7 +82,7 @@ const videos = {
   stretch: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
 };
 
-/* 🔥 FULL PRELOAD SYSTEM */
+/* 🔥 PRELOAD SYSTEM */
 const videoCache = {};
 
 function preloadAllVideos(){
@@ -92,11 +93,8 @@ function preloadAllVideos(){
     v.muted = true;
     videoCache[key] = v;
   });
-
-  console.log("All videos preloaded");
 }
 
-/* 🔥 USE CACHED VIDEO */
 function useCachedVideo(key){
   const next = getNextVideo();
   next.src = videoCache[key].src;
@@ -127,6 +125,7 @@ timeline.push({type:"video",label:"STRETCH",duration:360,video:"stretch"});
 
 /* 🔥 FIREBASE STATE */
 let state = null;
+let lastIndex = -1; // 🔥 NEW FIX
 
 db.ref("state").on("value", snap=>{
   state = snap.val();
@@ -145,36 +144,36 @@ setInterval(()=>{
   label.innerText = segment.label;
   updateTimer(remain);
 
-  if(segment.type==="video"){
-    center.style.display="none";
+  /* 🔥 FIXED VIDEO SWITCH LOGIC */
+  if(state.index !== lastIndex){
+    lastIndex = state.index;
 
-    const current = getCurrentVideo();
-
-    if(!current.src.includes(videos[segment.video])){
+    if(segment.type === "video"){
+      center.style.display = "none";
       useCachedVideo(segment.video);
       switchVideo();
     }
-  }
 
-  if(segment.type==="rest"){
-    getCurrentVideo().pause();
-    getCurrentVideo().style.display="none";
-    center.innerText="REST";
-    center.style.display="block";
-  }
-
-  if(segment.type==="break"){
-    getCurrentVideo().pause();
-    getCurrentVideo().style.display="none";
-    center.style.display="block";
-
-    if(remain<=15){
-      center.innerText="NEXT";
-      useCachedVideo(segment.next);
-      switchVideo();
-    } else {
-      center.innerText="BREAK";
+    if(segment.type === "rest"){
+      getCurrentVideo().pause();
+      getCurrentVideo().style.display = "none";
+      center.innerText = "REST";
+      center.style.display = "block";
     }
+
+    if(segment.type === "break"){
+      getCurrentVideo().pause();
+      getCurrentVideo().style.display = "none";
+      center.innerText = "BREAK";
+      center.style.display = "block";
+    }
+  }
+
+  /* 🔥 PREVIEW */
+  if(segment.type==="break" && remain <= 15){
+    center.innerText="NEXT";
+    useCachedVideo(segment.next);
+    switchVideo();
   }
 
 },250);
