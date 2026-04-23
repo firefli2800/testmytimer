@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Gym Display</title>
+<title>Gym Display + Controller</title>
 
 <style>
   html, body {
@@ -30,16 +30,8 @@
     z-index: 10;
   }
 
-  #label {
-    font-size: 40px;
-    font-weight: bold;
-    text-shadow: 0 0 10px black;
-  }
-
-  #timer {
-    font-size: 80px;
-    text-shadow: 0 0 10px black;
-  }
+  #label { font-size: 40px; font-weight: bold; }
+  #timer { font-size: 80px; }
 
   #centerText {
     position: fixed;
@@ -50,6 +42,21 @@
     font-weight: bold;
     display: none;
     z-index: 20;
+  }
+
+  /* 🔥 CONTROLLER UI */
+  #controls {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 30;
+  }
+
+  button {
+    margin: 5px;
+    padding: 10px 15px;
+    font-size: 14px;
+    cursor: pointer;
   }
 </style>
 </head>
@@ -65,67 +72,60 @@
 
 <div id="centerText"></div>
 
+<!-- 🔥 CONTROLLER -->
+<div id="controls">
+  <button onclick="play()">Play / Resume</button>
+  <button onclick="pause()">Pause</button>
+  <button onclick="stop()">Stop Video</button>
+  <button onclick="reset()">Reset</button>
+  <button onclick="nextSegment()">Next</button>
+  <button onclick="prevSegment()">Previous</button>
+</div>
+
 <script>
 const video = document.getElementById("video");
 const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const centerText = document.getElementById("centerText");
 
-// 🔧 VIDEO PLACEHOLDERS (CHANGE THESE)
+// CONFIG
 const videos = {
   warmup: "VIDEO_URL",
-  workout1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  workout3: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-  workout4: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
+  workout1: "VIDEO_URL",
+  workout2: "VIDEO_URL",
+  workout3: "VIDEO_URL",
+  workout4: "VIDEO_URL",
   stretch: "VIDEO_URL"
 };
 
-// 🔧 WORKOUT PLAN (timeline engine)
+// TIMELINE
 const timeline = [];
 
-// Warmup
 timeline.push({ type: "video", label: "WARMUP", duration: 360, video: "warmup" });
 
-// Function to add workout blocks
 function addWorkoutBlock(name) {
   for (let i = 1; i <= 3; i++) {
-    timeline.push({
-      type: "video",
-      label: `WORK ${name}-${i}`,
-      duration: 45,
-      video: `workout${name}`
-    });
-
-    timeline.push({
-      type: "rest",
-      label: "REST",
-      duration: 15
-    });
+    timeline.push({ type: "video", label: `WORK ${name}-${i}`, duration: 45, video: `workout${name}` });
+    timeline.push({ type: "rest", label: "REST", duration: 15 });
   }
-
-  timeline.push({
-    type: "break",
-    label: "BREAK",
-    duration: 60,
-    next: `workout${parseInt(name) + 1}`
-  });
+  timeline.push({ type: "break", label: "BREAK", duration: 60, next: `workout${parseInt(name) + 1}` });
 }
 
-// Add all 4 workout sections
 addWorkoutBlock("1");
 addWorkoutBlock("2");
 addWorkoutBlock("3");
 addWorkoutBlock("4");
 
-// Stretch
 timeline.push({ type: "video", label: "STRETCH", duration: 360, video: "stretch" });
 
 // STATE
 let index = 0;
 let startTime = Date.now();
+let paused = false;
+let pausedTime = 0;
+let videoStopped = false;
 
-// Load video helper
+// VIDEO LOADER
 function loadVideo(key) {
   const url = videos[key];
   video.src = url + "&t=" + Date.now();
@@ -137,6 +137,8 @@ function loadVideo(key) {
 
 // MAIN LOOP
 setInterval(() => {
+  if (paused) return;
+
   const segment = timeline[index];
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   const remain = segment.duration - elapsed;
@@ -144,49 +146,88 @@ setInterval(() => {
   label.innerText = segment.label;
   updateTimer(remain);
 
-  // HANDLE TYPES
-  if (segment.type === "video") {
-    centerText.style.display = "none";
-    video.style.display = "block";
-
-    if (!video.src.includes(videos[segment.video])) {
-      loadVideo(segment.video);
-    }
-  }
-
-  if (segment.type === "rest") {
-    video.pause();
-    video.style.display = "none";
-    centerText.innerText = "REST";
-    centerText.style.display = "block";
-  }
-
-  if (segment.type === "break") {
-    video.pause();
-    video.style.display = "none";
-    centerText.style.display = "block";
-
-    if (remain <= 15 && segment.next && videos[segment.next]) {
-      centerText.innerText = "NEXT";
+  if (!videoStopped) {
+    if (segment.type === "video") {
+      centerText.style.display = "none";
       video.style.display = "block";
-      loadVideo(segment.next);
-    } else {
-      centerText.innerText = "BREAK";
+
+      if (!video.src.includes(videos[segment.video])) {
+        loadVideo(segment.video);
+      }
+    }
+
+    if (segment.type === "rest") {
+      video.pause();
+      video.style.display = "none";
+      centerText.innerText = "REST";
+      centerText.style.display = "block";
+    }
+
+    if (segment.type === "break") {
+      video.pause();
+      video.style.display = "none";
+      centerText.style.display = "block";
+
+      if (remain <= 15 && segment.next && videos[segment.next]) {
+        centerText.innerText = "NEXT";
+        video.style.display = "block";
+        loadVideo(segment.next);
+      } else {
+        centerText.innerText = "BREAK";
+      }
     }
   }
 
-  // MOVE TO NEXT SEGMENT
   if (remain <= 0) {
-    index++;
-    if (index >= timeline.length) {
-      index = 0; // loop workout
-    }
-    startTime = Date.now();
+    nextSegment();
   }
 
 }, 250);
 
-// TIMER FORMAT
+// CONTROLS
+
+function play() {
+  if (paused) {
+    startTime += (Date.now() - pausedTime);
+    paused = false;
+  }
+  video.play();
+}
+
+function pause() {
+  paused = true;
+  pausedTime = Date.now();
+  video.pause();
+}
+
+function stop() {
+  videoStopped = true;
+  video.pause();
+}
+
+function reset() {
+  index = 0;
+  startTime = Date.now();
+  paused = false;
+  videoStopped = false;
+  loadVideo("warmup");
+}
+
+function nextSegment() {
+  index++;
+  if (index >= timeline.length) index = 0;
+  startTime = Date.now();
+  videoStopped = false;
+}
+
+function prevSegment() {
+  index--;
+  if (index < 0) index = timeline.length - 1;
+  startTime = Date.now();
+  videoStopped = false;
+}
+
+// TIMER
 function updateTimer(seconds) {
   const s = Math.max(0, seconds);
   const m = Math.floor(s / 60);
