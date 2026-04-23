@@ -1,0 +1,177 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Workout Builder</title>
+<style>
+body{font-family:Arial,sans-serif;padding:20px;background:#111;color:#fff}
+h1,h2{margin-top:0}
+.section{margin-bottom:24px;padding:16px;border:1px solid #333;border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px}
+label{display:block;font-size:14px;margin-bottom:6px}
+select{width:100%;padding:8px}
+button{margin-top:16px;padding:10px 16px;font-size:16px}
+small{color:#bbb}
+</style>
+</head>
+<body>
+
+<h1>Workout Builder</h1>
+<small>Pick warmup, cooldown, and the 3 station videos for each of 6 blocks.</small>
+
+<div class="section">
+  <h2>Warmup / Cooldown</h2>
+  <div class="grid">
+    <div>
+      <label for="warmupPath">Warmup Video</label>
+      <select id="warmupPath"></select>
+    </div>
+    <div>
+      <label for="cooldownPath">Cooldown Video</label>
+      <select id="cooldownPath"></select>
+    </div>
+  </div>
+</div>
+
+<div id="blocksContainer"></div>
+
+<button onclick="saveWorkout()">Save Workout</button>
+<div id="status" style="margin-top:12px;"></div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
+  authDomain: "timer-app-30e7d.firebaseapp.com",
+  databaseURL: "https://timer-app-30e7d-default-rtdb.firebaseio.com",
+  projectId: "timer-app-30e7d",
+  storageBucket: "timer-app-30e7d.firebasestorage.app"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const storage = firebase.storage();
+
+const warmupSelect = document.getElementById("warmupPath");
+const cooldownSelect = document.getElementById("cooldownPath");
+const blocksContainer = document.getElementById("blocksContainer");
+const statusEl = document.getElementById("status");
+
+let workoutConfig = null;
+let warmupFiles = [];
+let cooldownFiles = [];
+let workoutFiles = [];
+
+function listFolder(path) {
+  return storage.ref(path).listAll().then(res => {
+    return res.items.map(item => ({
+      name: item.name,
+      fullPath: item.fullPath
+    })).sort((a,b) => a.name.localeCompare(b.name));
+  });
+}
+
+function buildBlocksUI() {
+  blocksContainer.innerHTML = "";
+  for (let block = 0; block < 6; block += 1) {
+    const section = document.createElement("div");
+    section.className = "section";
+    section.innerHTML = `
+      <h2>Block ${block + 1}</h2>
+      <div class="grid">
+        <div>
+          <label for="block_${block}_station_0">Station 1</label>
+          <select id="block_${block}_station_0"></select>
+        </div>
+        <div>
+          <label for="block_${block}_station_1">Station 2</label>
+          <select id="block_${block}_station_1"></select>
+        </div>
+        <div>
+          <label for="block_${block}_station_2">Station 3</label>
+          <select id="block_${block}_station_2"></select>
+        </div>
+      </div>
+    `;
+    blocksContainer.appendChild(section);
+  }
+}
+
+function populateSelect(select, items, selectedValue) {
+  select.innerHTML = "";
+  items.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item.fullPath;
+    option.textContent = item.name;
+    if (item.fullPath === selectedValue) option.selected = true;
+    select.appendChild(option);
+  });
+}
+
+function renderBuilder() {
+  buildBlocksUI();
+
+  populateSelect(warmupSelect, warmupFiles, workoutConfig?.warmupPath || "");
+  populateSelect(cooldownSelect, cooldownFiles, workoutConfig?.cooldownPath || "");
+
+  for (let block = 0; block < 6; block += 1) {
+    for (let station = 0; station < 3; station += 1) {
+      const select = document.getElementById(`block_${block}_station_${station}`);
+      const selectedValue = workoutConfig?.blocks?.[block]?.[station] || "";
+      populateSelect(select, workoutFiles, selectedValue);
+    }
+  }
+}
+
+function saveWorkout() {
+  const blocks = [];
+
+  for (let block = 0; block < 6; block += 1) {
+    const row = [];
+    for (let station = 0; station < 3; station += 1) {
+      row.push(document.getElementById(`block_${block}_station_${station}`).value);
+    }
+    blocks.push(row);
+  }
+
+  const newConfig = {
+    warmupPath: warmupSelect.value,
+    cooldownPath: cooldownSelect.value,
+    blocks
+  };
+
+  db.ref("workoutConfig").set(newConfig)
+    .then(() => {
+      statusEl.textContent = "Workout saved.";
+    })
+    .catch((err) => {
+      statusEl.textContent = "Error saving workout: " + err.message;
+    });
+}
+
+Promise.all([
+  listFolder("Warmups"),
+  listFolder("Cooldowns"),
+  listFolder("Workouts")
+]).then(([warmups, cooldowns, workouts]) => {
+  warmupFiles = warmups;
+  cooldownFiles = cooldowns;
+  workoutFiles = workouts;
+  renderBuilder();
+}).catch(err => {
+  statusEl.textContent = "Error loading folders: " + err.message;
+});
+
+db.ref("workoutConfig").on("value", snap => {
+  workoutConfig = snap.val() || null;
+  if (warmupFiles.length || cooldownFiles.length || workoutFiles.length) {
+    renderBuilder();
+  }
+});
+</script>
+
+</body>
+</html>
