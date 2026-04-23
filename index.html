@@ -10,13 +10,7 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 #overlay{position:fixed;top:20px;right:30px;z-index:10}
 #label{font-size:40px}
 #timer{font-size:80px}
-#center{
-  position:fixed;
-  top:50%;left:50%;
-  transform:translate(-50%,-50%);
-  font-size:100px;
-  display:none;
-}
+#center{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:100px;display:none}
 </style>
 </head>
 
@@ -36,7 +30,6 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
-/* FIREBASE */
 const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
@@ -55,61 +48,53 @@ const videoA = document.getElementById("videoA");
 const videoB = document.getElementById("videoB");
 let activeVideo = "A";
 
-function getCurrentVideo(){
-  return activeVideo === "A" ? videoA : videoB;
-}
-
-function getNextVideo(){
-  return activeVideo === "A" ? videoB : videoA;
-}
+function getCurrentVideo(){ return activeVideo==="A"?videoA:videoB; }
+function getNextVideo(){ return activeVideo==="A"?videoB:videoA; }
 
 function switchVideo(){
   const current = getCurrentVideo();
   const next = getNextVideo();
 
-  current.style.display = "none";
-  next.style.display = "block";
+  current.style.display="none";
+  next.style.display="block";
 
-  next.currentTime = 0;
   next.play().catch(()=>{});
-
-  activeVideo = activeVideo === "A" ? "B" : "A";
+  activeVideo = activeVideo==="A"?"B":"A";
 }
 
 /* VIDEOS */
 const videos = {
-  warmup: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  workout3: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-  workout4: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
-  stretch: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
+  warmup:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
+  workout1:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
+  workout2:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
+  workout3:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
+  workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
+  stretch:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
 };
 
-/* PRELOAD */
-const cache = {};
+/* CACHE */
+const cache={};
 Object.keys(videos).forEach(k=>{
-  const v = document.createElement("video");
-  v.src = videos[k];
+  const v=document.createElement("video");
+  v.src=videos[k];
   v.preload="auto";
   v.muted=true;
   cache[k]=v;
 });
 
 function useCachedVideo(key){
-  const next = getNextVideo();
-  next.src = cache[key].src;
+  const next=getNextVideo();
+  next.src=cache[key].src;
   next.load();
 }
 
 /* UI */
-const label = document.getElementById("label");
-const timer = document.getElementById("timer");
-const center = document.getElementById("center");
+const label=document.getElementById("label");
+const timer=document.getElementById("timer");
+const center=document.getElementById("center");
 
 /* TIMELINE */
-const timeline = [];
-
+const timeline=[];
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
 function addBlock(n){
@@ -119,7 +104,6 @@ function addBlock(n){
   }
   timeline.push({type:"break",label:"BREAK",duration:60,next:`workout${n+1}`});
 }
-
 addBlock(1);addBlock(2);addBlock(3);addBlock(4);
 timeline.push({type:"video",label:"STRETCH",duration:360,video:"stretch"});
 
@@ -135,77 +119,56 @@ db.ref("state").on("value",snap=>{
 setInterval(()=>{
   if(!state) return;
 
-  const segment = timeline[state.index];
+  const segment=timeline[state.index];
   if(!segment) return;
 
-  /* PAUSE */
+  /* ELAPSED FIX */
+  let elapsed = state.paused ? (state.elapsed||0) : (Date.now()-state.startTime);
+
+  const remain = segment.duration - Math.floor(elapsed/1000);
+
+  label.innerText=segment.label;
+  updateTimer(remain);
+
+  /* PAUSE VIDEO SYNC */
   if(state.paused){
     getCurrentVideo().pause();
     return;
   }
 
-  const elapsed = Math.floor((Date.now()-state.startTime)/1000);
-  const remain = segment.duration - elapsed;
-
-  label.innerText = segment.label;
-  updateTimer(remain);
-
   /* SEGMENT CHANGE */
-  if(state.index !== lastIndex){
-    lastIndex = state.index;
-
-    /* RESET stop flag */
-    if(state.videoStopped){
-      center.innerText="VIDEO STOPPED";
-      center.style.display="block";
-    }
+  if(state.index!==lastIndex){
+    lastIndex=state.index;
 
     if(segment.type==="video" && !state.videoStopped){
       center.style.display="none";
       useCachedVideo(segment.video);
       switchVideo();
     }
-
-    if(segment.type==="rest"){
-      getCurrentVideo().pause();
-      getCurrentVideo().style.display="none";
-      center.innerText="REST";
-      center.style.display="block";
-    }
-
-    if(segment.type==="break"){
-      getCurrentVideo().pause();
-      getCurrentVideo().style.display="none";
-      center.innerText="BREAK";
-      center.style.display="block";
-    }
   }
 
-  /* STOP VIDEO (but timer continues) */
+  /* VIDEO RESUME POSITION */
+  const current=getCurrentVideo();
+  current.currentTime = elapsed/1000;
+
+  /* STOP VIDEO */
   if(state.videoStopped){
-    getCurrentVideo().pause();
-    getCurrentVideo().style.display="none";
-  }
-
-  /* PREVIEW */
-  if(segment.type==="break" && remain<=15){
-    center.innerText="NEXT";
-    useCachedVideo(segment.next);
-    switchVideo();
+    current.pause();
+    current.style.display="none";
   }
 
   /* AUTO NEXT */
   if(remain<=0){
     db.ref("state").update({
-      index: state.index + 1,
-      startTime: Date.now(),
+      index:state.index+1,
+      startTime:Date.now(),
+      elapsed:0,
       videoStopped:false
     });
   }
 
 },250);
 
-/* TIMER */
 function updateTimer(s){
   s=Math.max(0,s);
   const m=Math.floor(s/60);
