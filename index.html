@@ -22,8 +22,7 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 
 <body>
 
-<video id="videoA" muted playsinline loop></video>
-<video id="videoB" muted playsinline loop style="display:none"></video>
+<video id="video" muted playsinline></video>
 
 <div id="overlay">
   <div id="label"></div>
@@ -46,24 +45,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* VIDEO SYSTEM */
-const videoA = document.getElementById("videoA");
-const videoB = document.getElementById("videoB");
-let activeVideo = "A";
+/* VIDEO */
+const video = document.getElementById("video");
 
-function getCurrentVideo(){ return activeVideo==="A"?videoA:videoB; }
-function getNextVideo(){ return activeVideo==="A"?videoB:videoA; }
-
-function switchVideo(){
-  const current = getCurrentVideo();
-  const next = getNextVideo();
-
-  current.style.display="none";
-  next.style.display="block";
-
-  next.play().catch(()=>{});
-  activeVideo = activeVideo==="A"?"B":"A";
-}
+/* UI */
+const label = document.getElementById("label");
+const timer = document.getElementById("timer");
+const center = document.getElementById("center");
 
 /* VIDEOS */
 const videos = {
@@ -76,44 +64,56 @@ const videos = {
 
 /* TIMELINE */
 const timeline=[];
+
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
 function addBlock(n){
   for(let i=1;i<=3;i++){
     timeline.push({type:"video",label:`WORK ${n}-${i}`,duration:45,video:`workout${n}`});
-    timeline.push({type:"rest",label:"REST",duration:15});
+    timeline.push({type:"rest",duration:15});
   }
-  timeline.push({type:"break",label:"BREAK",duration:60});
+  timeline.push({type:"break",duration:60});
 }
-addBlock(1);addBlock(2);addBlock(3);addBlock(4);
 
-/* UI */
-const label=document.getElementById("label");
-const timer=document.getElementById("timer");
-const center=document.getElementById("center");
+addBlock(1);addBlock(2);addBlock(3);addBlock(4);
 
 /* STATE */
 let state=null;
-let lastIndex=-1;
 
 db.ref("state").on("value",snap=>{
   state=snap.val();
 });
 
-/* LOOP */
+/* MAIN LOOP */
 setInterval(()=>{
   if(!state) return;
 
-  const segment=timeline[state.index];
+  let elapsed = state.paused
+    ? state.elapsed
+    : (Date.now() - state.startTime);
+
+  let total = 0;
+  let segment = null;
+  let segmentElapsed = 0;
+
+  for(let i=0;i<timeline.length;i++){
+    const seg = timeline[i];
+
+    if(elapsed < total + (seg.duration * 1000)){
+      segment = seg;
+      segmentElapsed = elapsed - total;
+      break;
+    }
+
+    total += seg.duration * 1000;
+  }
+
   if(!segment) return;
 
-  let elapsed = state.paused ? (state.elapsed||0) : (Date.now()-state.startTime);
-  const remain = segment.duration - Math.floor(elapsed/1000);
+  const remain = segment.duration - Math.floor(segmentElapsed / 1000);
 
-  label.innerText=segment.label;
-  timer.innerText=format(remain);
-
-  const video=getCurrentVideo();
+  label.innerText = segment.label || "";
+  timer.innerText = format(remain);
 
   /* PAUSE */
   if(state.paused){
@@ -121,7 +121,7 @@ setInterval(()=>{
     return;
   }
 
-  /* REST / BREAK (HARD STOP VIDEO) */
+  /* REST / BREAK */
   if(segment.type==="rest" || segment.type==="break"){
     video.pause();
     video.style.display="none";
@@ -131,35 +131,16 @@ setInterval(()=>{
     return;
   }
 
-  /* VIDEO SEGMENTS */
+  /* VIDEO */
   center.style.display="none";
-
-  if(state.index !== lastIndex){
-    lastIndex = state.index;
-
-    const next = getNextVideo();
-    next.src = videos[segment.video];
-    next.currentTime = elapsed / 1000;
-
-    switchVideo();
-  }
-
   video.style.display="block";
 
-  /* STOP VIDEO FEATURE */
-  if(state.videoStopped){
-    video.pause();
-    video.style.display="none";
-  }
+  const src = videos[segment.video];
 
-  /* AUTO NEXT */
-  if(remain<=0){
-    db.ref("state").update({
-      index:state.index+1,
-      startTime:Date.now(),
-      elapsed:0,
-      videoStopped:false
-    });
+  if(video.src !== src){
+    video.src = src;
+    video.currentTime = segmentElapsed / 1000;
+    video.play().catch(()=>{});
   }
 
 },250);
