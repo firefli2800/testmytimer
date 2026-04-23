@@ -33,6 +33,15 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+/* Timeline durations (seconds) */
+const durations = [
+  360,
+  45,15,45,15,45,15,60,
+  45,15,45,15,45,15,60,
+  45,15,45,15,45,15,60,
+  45,15,45,15,45,15,60
+];
+
 /* PLAY */
 function play(){
   db.ref("state").once("value", snap=>{
@@ -64,7 +73,6 @@ function pause(){
 /* RESET */
 function reset(){
   db.ref("state").set({
-    index:0,
     startTime:Date.now(),
     paused:false,
     elapsed:0
@@ -73,26 +81,47 @@ function reset(){
 
 /* NEXT */
 function next(){
-  db.ref("state").once("value",snap=>{
-    const s=snap.val();
+  db.ref("state").once("value", snap=>{
+    const s = snap.val();
+
+    let elapsed = s.paused ? s.elapsed : (Date.now() - s.startTime);
+
+    let total = 0;
+    let i = 0;
+
+    for(; i < durations.length; i++){
+      if(elapsed < total + durations[i]*1000) break;
+      total += durations[i]*1000;
+    }
+
+    total += durations[i] * 1000;
 
     db.ref("state").update({
-      index:s.index+1,
-      startTime:Date.now(),
-      elapsed:0
+      startTime: Date.now() - total,
+      paused:false
     });
   });
 }
 
 /* PREV */
 function prev(){
-  db.ref("state").once("value",snap=>{
-    const s=snap.val();
+  db.ref("state").once("value", snap=>{
+    const s = snap.val();
+
+    let elapsed = s.paused ? s.elapsed : (Date.now() - s.startTime);
+
+    let total = 0;
+    let prevStart = 0;
+
+    for(let i=0;i<durations.length;i++){
+      if(elapsed < total + durations[i]*1000) break;
+      prevStart = total;
+      total += durations[i]*1000;
+    }
 
     db.ref("state").update({
-      index:Math.max(0,s.index-1),
-      startTime:Date.now(),
-      elapsed:0
+      startTime: Date.now() - prevStart,
+      paused:false
     });
   });
 }
