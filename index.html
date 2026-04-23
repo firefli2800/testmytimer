@@ -19,8 +19,8 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 <video id="video" muted playsinline loop></video>
 
 <div id="overlay">
-  <div id="label"></div>
-  <div id="timer"></div>
+  <div id="label">LOADING...</div>
+  <div id="timer">00:00</div>
 </div>
 
 <div id="center"></div>
@@ -29,7 +29,6 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
-// 🔥 YOUR FIREBASE CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
@@ -37,8 +36,7 @@ const firebaseConfig = {
   projectId: "timer-app-30e7d",
   storageBucket: "timer-app-30e7d.firebasestorage.app",
   messagingSenderId: "715490093829",
-  appId: "1:715490093829:web:e4591166f3be6d9722e56c",
-  measurementId: "G-DQZ7DN6GX3"
+  appId: "1:715490093829:web:e4591166f3be6d9722e56c"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -49,17 +47,17 @@ const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const center = document.getElementById("center");
 
-// 🔧 SAME VIDEO MAP
+// 🔥 VIDEOS
 const videos = {
-  warmup: "VIDEO_URL",
+  warmup: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   workout1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   workout2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
   workout3: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
   workout4: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
-  stretch: "VIDEO_URL"
+  stretch: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
 };
 
-// TIMELINE (same as before)
+// TIMELINE
 const timeline = [];
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
@@ -76,7 +74,6 @@ timeline.push({type:"video",label:"STRETCH",duration:360,video:"stretch"});
 
 let state = null;
 
-// 🔥 LISTEN TO CONTROLLER
 db.ref("state").on("value", snap=>{
   state = snap.val();
 });
@@ -88,9 +85,19 @@ function loadVideo(key){
 }
 
 setInterval(()=>{
-  if(!state || state.paused) return;
+  if(!state){
+    label.innerText="WAITING...";
+    return;
+  }
+
+  if(state.paused){
+    label.innerText="PAUSED";
+    return;
+  }
 
   const segment = timeline[state.index];
+  if(!segment) return;
+
   const elapsed = Math.floor((Date.now() - state.startTime)/1000);
   const remain = segment.duration - elapsed;
 
