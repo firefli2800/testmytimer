@@ -10,7 +10,7 @@ h1,h2{margin-top:0}
 .grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px}
 label{display:block;font-size:14px;margin-bottom:6px}
 select{width:100%;padding:8px}
-button{margin-top:16px;padding:10px 16px;font-size:16px}
+button{margin-top:16px;margin-right:10px;padding:10px 16px;font-size:16px}
 small{color:#bbb}
 </style>
 </head>
@@ -18,6 +18,12 @@ small{color:#bbb}
 
 <h1>Workout Builder</h1>
 <small>Pick warmup, cooldown, and the 3 station videos for each of 6 blocks.</small>
+
+<div class="section">
+  <h2>Quick Actions</h2>
+  <button type="button" onclick="copyBlockGroup(0, [1,2])">Copy Block 1 to Blocks 2 and 3</button>
+  <button type="button" onclick="copyBlockGroup(3, [4,5])">Copy Block 4 to Blocks 5 and 6</button>
+</div>
 
 <div class="section">
   <h2>Warmup / Cooldown</h2>
@@ -74,11 +80,17 @@ function listFolder(path) {
   });
 }
 
+function cleanName(filename) {
+  return filename.replace(/\.[^/.]+$/, "");
+}
+
 function buildBlocksUI() {
   blocksContainer.innerHTML = "";
+
   for (let block = 0; block < 6; block += 1) {
     const section = document.createElement("div");
     section.className = "section";
+
     section.innerHTML = `
       <h2>Block ${block + 1}</h2>
       <div class="grid">
@@ -95,17 +107,26 @@ function buildBlocksUI() {
           <select id="block_${block}_station_2"></select>
         </div>
       </div>
+      <button type="button" onclick="copyBlockToNext(${block})">Copy this block to next</button>
     `;
+
     blocksContainer.appendChild(section);
   }
 }
 
 function populateSelect(select, items, selectedValue) {
   select.innerHTML = "";
+
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "-- Select Video --";
+  if (!selectedValue) blank.selected = true;
+  select.appendChild(blank);
+
   items.forEach(item => {
     const option = document.createElement("option");
     option.value = item.fullPath;
-    option.textContent = item.name;
+    option.textContent = cleanName(item.name);
     if (item.fullPath === selectedValue) option.selected = true;
     select.appendChild(option);
   });
@@ -126,15 +147,50 @@ function renderBuilder() {
   }
 }
 
+function copyBlockToNext(block) {
+  if (block >= 5) return;
+
+  for (let station = 0; station < 3; station += 1) {
+    const current = document.getElementById(`block_${block}_station_${station}`);
+    const next = document.getElementById(`block_${block + 1}_station_${station}`);
+    next.value = current.value;
+  }
+}
+
+function copyBlockGroup(sourceBlock, targetBlocks) {
+  targetBlocks.forEach(targetBlock => {
+    for (let station = 0; station < 3; station += 1) {
+      const source = document.getElementById(`block_${sourceBlock}_station_${station}`);
+      const target = document.getElementById(`block_${targetBlock}_station_${station}`);
+      target.value = source.value;
+    }
+  });
+}
+
 function saveWorkout() {
   const blocks = [];
 
   for (let block = 0; block < 6; block += 1) {
     const row = [];
     for (let station = 0; station < 3; station += 1) {
-      row.push(document.getElementById(`block_${block}_station_${station}`).value);
+      const value = document.getElementById(`block_${block}_station_${station}`).value;
+      if (!value) {
+        statusEl.textContent = `Missing video in Block ${block + 1}, Station ${station + 1}`;
+        return;
+      }
+      row.push(value);
     }
     blocks.push(row);
+  }
+
+  if (!warmupSelect.value) {
+    statusEl.textContent = "Missing warmup video.";
+    return;
+  }
+
+  if (!cooldownSelect.value) {
+    statusEl.textContent = "Missing cooldown video.";
+    return;
   }
 
   const newConfig = {
