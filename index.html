@@ -61,11 +61,11 @@ function switchVideo(){
   const current = getCurrentVideo();
   const next = getNextVideo();
 
-  current.style.display="none";
-  next.style.display="block";
+  current.style.display = "none";
+  next.style.display = "block";
 
   next.play().catch(()=>{});
-  activeVideo = activeVideo==="A"?"B":"A";
+  activeVideo = activeVideo==="A" ? "B" : "A";
 }
 
 /* VIDEOS */
@@ -79,28 +79,28 @@ const videos = {
 };
 
 /* CACHE */
-const cache={};
+const cache = {};
 Object.keys(videos).forEach(k=>{
-  const v=document.createElement("video");
-  v.src=videos[k];
-  v.preload="auto";
-  v.muted=true;
-  cache[k]=v;
+  const v = document.createElement("video");
+  v.src = videos[k];
+  v.preload = "auto";
+  v.muted = true;
+  cache[k] = v;
 });
 
 function useCachedVideo(key){
-  const next=getNextVideo();
-  next.src=cache[key].src;
+  const next = getNextVideo();
+  next.src = cache[key].src;
   next.load();
 }
 
 /* UI */
-const label=document.getElementById("label");
-const timer=document.getElementById("timer");
-const center=document.getElementById("center");
+const label = document.getElementById("label");
+const timer = document.getElementById("timer");
+const center = document.getElementById("center");
 
 /* TIMELINE */
-const timeline=[];
+const timeline = [];
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
 function addBlock(n){
@@ -114,27 +114,27 @@ addBlock(1);addBlock(2);addBlock(3);addBlock(4);
 timeline.push({type:"video",label:"STRETCH",duration:360,video:"stretch"});
 
 /* STATE */
-let state=null;
-let lastIndex=-1;
+let state = null;
+let lastIndex = -1;
 
 db.ref("state").on("value",snap=>{
-  state=snap.val();
+  state = snap.val();
 });
 
 /* MAIN LOOP */
 setInterval(()=>{
   if(!state) return;
 
-  const segment=timeline[state.index];
+  const segment = timeline[state.index];
   if(!segment) return;
 
-  let elapsed = state.paused ? (state.elapsed||0) : (Date.now()-state.startTime);
-  const remain = segment.duration - Math.floor(elapsed/1000);
+  let elapsed = state.paused ? (state.elapsed || 0) : (Date.now() - state.startTime);
+  const remain = segment.duration - Math.floor(elapsed / 1000);
 
-  label.innerText=segment.label;
+  label.innerText = segment.label;
   updateTimer(remain);
 
-  const current=getCurrentVideo();
+  const current = getCurrentVideo();
 
   /* PAUSE */
   if(state.paused){
@@ -143,47 +143,62 @@ setInterval(()=>{
   }
 
   /* SEGMENT CHANGE */
-  if(state.index!==lastIndex){
-    lastIndex=state.index;
+  if(state.index !== lastIndex){
+    lastIndex = state.index;
 
-    if(segment.type==="video"){
+    if(segment.type === "video"){
       useCachedVideo(segment.video);
       switchVideo();
     }
   }
 
-  /* STOP / RESUME VIDEO */
-  if(state.videoStopped){
-    current.pause();
-    current.style.display="none";
-  } else {
-    current.style.display="block";
+  /* RULES BY SEGMENT TYPE */
+  if(segment.type === "video"){
+    center.style.display = "none";
 
-    if(current.paused){
-      current.play().catch(()=>{});
+    if(state.videoStopped){
+      current.pause();
+      current.style.display = "none";
+    } else {
+      current.style.display = "block";
+      if(current.paused){
+        current.play().catch(()=>{});
+      }
+      current.currentTime = elapsed / 1000;
     }
   }
 
-  /* SYNC VIDEO POSITION */
-  current.currentTime = elapsed / 1000;
+  if(segment.type === "rest"){
+    current.pause();
+    current.style.display = "none";
+    center.innerText = "REST";
+    center.style.display = "block";
+  }
+
+  if(segment.type === "break"){
+    current.pause();
+    current.style.display = "none";
+    center.innerText = remain <= 15 ? "NEXT" : "BREAK";
+    center.style.display = "block";
+  }
 
   /* AUTO NEXT */
-  if(remain<=0){
+  if(remain <= 0){
     db.ref("state").update({
-      index:state.index+1,
-      startTime:Date.now(),
-      elapsed:0,
-      videoStopped:false
+      index: state.index + 1,
+      startTime: Date.now(),
+      elapsed: 0,
+      videoStopped: false
     });
   }
 
 },250);
 
 function updateTimer(s){
-  s=Math.max(0,s);
-  const m=Math.floor(s/60);
-  const sec=s%60;
-  timer.innerText=`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  s = Math.max(0,s);
+  const m = Math.floor(s/60);
+  const sec = s%60;
+  timer.innerText = `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 </script>
 
