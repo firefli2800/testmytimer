@@ -10,7 +10,13 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 #overlay{position:fixed;top:20px;right:30px;z-index:10}
 #label{font-size:40px}
 #timer{font-size:80px}
-#center{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:100px;display:none}
+#center{
+  position:fixed;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  font-size:100px;
+  display:none;
+}
 </style>
 </head>
 
@@ -122,17 +128,17 @@ setInterval(()=>{
   const segment=timeline[state.index];
   if(!segment) return;
 
-  /* ELAPSED FIX */
   let elapsed = state.paused ? (state.elapsed||0) : (Date.now()-state.startTime);
-
   const remain = segment.duration - Math.floor(elapsed/1000);
 
   label.innerText=segment.label;
   updateTimer(remain);
 
-  /* PAUSE VIDEO SYNC */
+  const current=getCurrentVideo();
+
+  /* PAUSE */
   if(state.paused){
-    getCurrentVideo().pause();
+    current.pause();
     return;
   }
 
@@ -140,22 +146,26 @@ setInterval(()=>{
   if(state.index!==lastIndex){
     lastIndex=state.index;
 
-    if(segment.type==="video" && !state.videoStopped){
-      center.style.display="none";
+    if(segment.type==="video"){
       useCachedVideo(segment.video);
       switchVideo();
     }
   }
 
-  /* VIDEO RESUME POSITION */
-  const current=getCurrentVideo();
-  current.currentTime = elapsed/1000;
-
-  /* STOP VIDEO */
+  /* STOP / RESUME VIDEO */
   if(state.videoStopped){
     current.pause();
     current.style.display="none";
+  } else {
+    current.style.display="block";
+
+    if(current.paused){
+      current.play().catch(()=>{});
+    }
   }
+
+  /* SYNC VIDEO POSITION */
+  current.currentTime = elapsed / 1000;
 
   /* AUTO NEXT */
   if(remain<=0){
