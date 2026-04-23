@@ -33,16 +33,15 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* Timeline durations (seconds) */
 const durations = [
   360,
   45,15,45,15,45,15,60,
   45,15,45,15,45,15,60,
   45,15,45,15,45,15,60,
-  45,15,45,15,45,15,60
+  45,15,45,15,45,15,60,
+  360
 ];
 
-/* PLAY */
 function play(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
@@ -55,7 +54,6 @@ function play(){
   });
 }
 
-/* PAUSE */
 function pause(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
@@ -70,16 +68,14 @@ function pause(){
   });
 }
 
-/* RESET */
 function reset(){
   db.ref("state").set({
     startTime:Date.now(),
-    paused:false,
+    paused:true,
     elapsed:0
   });
 }
 
-/* NEXT */
 function next(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
@@ -103,7 +99,6 @@ function next(){
   });
 }
 
-/* PREV */
 function prev(){
   db.ref("state").once("value", snap=>{
     const s = snap.val();
