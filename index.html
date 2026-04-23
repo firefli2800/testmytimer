@@ -26,8 +26,8 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 <video id="videoB" muted playsinline loop style="display:none"></video>
 
 <div id="overlay">
-  <div id="label">LOADING...</div>
-  <div id="timer">00:00</div>
+  <div id="label"></div>
+  <div id="timer"></div>
 </div>
 
 <div id="center"></div>
@@ -40,10 +40,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
   databaseURL: "https://timer-app-30e7d-default-rtdb.firebaseio.com",
-  projectId: "timer-app-30e7d",
-  storageBucket: "timer-app-30e7d.firebasestorage.app",
-  messagingSenderId: "715490093829",
-  appId: "1:715490093829:web:e4591166f3be6d9722e56c"
+  projectId: "timer-app-30e7d"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -61,46 +58,24 @@ function switchVideo(){
   const current = getCurrentVideo();
   const next = getNextVideo();
 
-  current.style.display = "none";
-  next.style.display = "block";
+  current.style.display="none";
+  next.style.display="block";
 
   next.play().catch(()=>{});
-  activeVideo = activeVideo==="A" ? "B" : "A";
+  activeVideo = activeVideo==="A"?"B":"A";
 }
 
 /* VIDEOS */
 const videos = {
   warmup:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   workout1:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout2:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  workout3:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-  workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
-  stretch:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
+  workout2:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
+  workout3:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
+  workout4:"https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.appspot.com/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab"
 };
 
-/* CACHE */
-const cache = {};
-Object.keys(videos).forEach(k=>{
-  const v = document.createElement("video");
-  v.src = videos[k];
-  v.preload = "auto";
-  v.muted = true;
-  cache[k] = v;
-});
-
-function useCachedVideo(key){
-  const next = getNextVideo();
-  next.src = cache[key].src;
-  next.load();
-}
-
-/* UI */
-const label = document.getElementById("label");
-const timer = document.getElementById("timer");
-const center = document.getElementById("center");
-
 /* TIMELINE */
-const timeline = [];
+const timeline=[];
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
 function addBlock(n){
@@ -108,97 +83,92 @@ function addBlock(n){
     timeline.push({type:"video",label:`WORK ${n}-${i}`,duration:45,video:`workout${n}`});
     timeline.push({type:"rest",label:"REST",duration:15});
   }
-  timeline.push({type:"break",label:"BREAK",duration:60,next:`workout${n+1}`});
+  timeline.push({type:"break",label:"BREAK",duration:60});
 }
 addBlock(1);addBlock(2);addBlock(3);addBlock(4);
-timeline.push({type:"video",label:"STRETCH",duration:360,video:"stretch"});
+
+/* UI */
+const label=document.getElementById("label");
+const timer=document.getElementById("timer");
+const center=document.getElementById("center");
 
 /* STATE */
-let state = null;
-let lastIndex = -1;
+let state=null;
+let lastIndex=-1;
 
 db.ref("state").on("value",snap=>{
-  state = snap.val();
+  state=snap.val();
 });
 
-/* MAIN LOOP */
+/* LOOP */
 setInterval(()=>{
   if(!state) return;
 
-  const segment = timeline[state.index];
+  const segment=timeline[state.index];
   if(!segment) return;
 
-  let elapsed = state.paused ? (state.elapsed || 0) : (Date.now() - state.startTime);
-  const remain = segment.duration - Math.floor(elapsed / 1000);
+  let elapsed = state.paused ? (state.elapsed||0) : (Date.now()-state.startTime);
+  const remain = segment.duration - Math.floor(elapsed/1000);
 
-  label.innerText = segment.label;
-  updateTimer(remain);
+  label.innerText=segment.label;
+  timer.innerText=format(remain);
 
-  const current = getCurrentVideo();
+  const video=getCurrentVideo();
 
   /* PAUSE */
   if(state.paused){
-    current.pause();
+    video.pause();
     return;
   }
 
-  /* SEGMENT CHANGE */
+  /* REST / BREAK (HARD STOP VIDEO) */
+  if(segment.type==="rest" || segment.type==="break"){
+    video.pause();
+    video.style.display="none";
+
+    center.innerText = segment.type==="rest" ? "REST" : "BREAK";
+    center.style.display="block";
+    return;
+  }
+
+  /* VIDEO SEGMENTS */
+  center.style.display="none";
+
   if(state.index !== lastIndex){
     lastIndex = state.index;
 
-    if(segment.type === "video"){
-      useCachedVideo(segment.video);
-      switchVideo();
-    }
+    const next = getNextVideo();
+    next.src = videos[segment.video];
+    next.currentTime = elapsed / 1000;
+
+    switchVideo();
   }
 
-  /* RULES BY SEGMENT TYPE */
-  if(segment.type === "video"){
-    center.style.display = "none";
+  video.style.display="block";
 
-    if(state.videoStopped){
-      current.pause();
-      current.style.display = "none";
-    } else {
-      current.style.display = "block";
-      if(current.paused){
-        current.play().catch(()=>{});
-      }
-      current.currentTime = elapsed / 1000;
-    }
-  }
-
-  if(segment.type === "rest"){
-    current.pause();
-    current.style.display = "none";
-    center.innerText = "REST";
-    center.style.display = "block";
-  }
-
-  if(segment.type === "break"){
-    current.pause();
-    current.style.display = "none";
-    center.innerText = remain <= 15 ? "NEXT" : "BREAK";
-    center.style.display = "block";
+  /* STOP VIDEO FEATURE */
+  if(state.videoStopped){
+    video.pause();
+    video.style.display="none";
   }
 
   /* AUTO NEXT */
-  if(remain <= 0){
+  if(remain<=0){
     db.ref("state").update({
-      index: state.index + 1,
-      startTime: Date.now(),
-      elapsed: 0,
-      videoStopped: false
+      index:state.index+1,
+      startTime:Date.now(),
+      elapsed:0,
+      videoStopped:false
     });
   }
 
 },250);
 
-function updateTimer(s){
-  s = Math.max(0,s);
-  const m = Math.floor(s/60);
-  const sec = s%60;
-  timer.innerText = `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+function format(s){
+  s=Math.max(0,s);
+  const m=Math.floor(s/60);
+  const sec=s%60;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 </script>
 
