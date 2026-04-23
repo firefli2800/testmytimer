@@ -57,17 +57,20 @@ video{
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
   databaseURL: "https://timer-app-30e7d-default-rtdb.firebaseio.com",
-  projectId: "timer-app-30e7d"
+  projectId: "timer-app-30e7d",
+  storageBucket: "timer-app-30e7d.firebasestorage.app"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const storage = firebase.storage();
 
 const params = new URLSearchParams(window.location.search);
 const requestedScreen = parseInt(params.get("screen"), 10);
@@ -79,47 +82,19 @@ const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const center = document.getElementById("center");
 
-const videoSources = {
-  warmup: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  cooldown: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-
-  station1_set1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  station2_set1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  station3_set1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-
-  station1_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
-  station2_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  station3_set2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9"
-};
-
-const stationVideos = [
-  ["station1_set1", "station2_set1", "station3_set1"],
-  ["station1_set1", "station2_set1", "station3_set1"],
-  ["station1_set1", "station2_set1", "station3_set1"],
-  ["station1_set2", "station2_set2", "station3_set2"],
-  ["station1_set2", "station2_set2", "station3_set2"],
-  ["station1_set2", "station2_set2", "station3_set2"]
-];
+let state = { startTime: Date.now(), paused: true, elapsed: 0 };
+let workoutConfig = null;
+let activeSource = "";
+let activeContextKey = "";
+let pendingLoadId = 0;
+const urlCache = {};
 
 const timeline = buildTimeline();
 const totalDurationMs = timeline.reduce((sum, segment) => sum + (segment.duration * 1000), 0);
 
-let state = defaultState();
-let activeSource = "";
-let activeContextKey = "";
-let pendingLoadId = 0;
-
-function defaultState() {
-  return {
-    startTime: Date.now(),
-    paused: true,
-    elapsed: 0
-  };
-}
-
 function buildTimeline() {
   const segments = [
-    { kind: "video", duration: 180, label: "WARMUP", directVideoKey: "warmup" }
+    { kind: "video", duration: 180, label: "WARMUP", directVideoConfigKey: "warmupPath" }
   ];
 
   for (let blockIndex = 0; blockIndex < 6; blockIndex += 1) {
@@ -153,7 +128,7 @@ function buildTimeline() {
     kind: "video",
     duration: 180,
     label: "STRETCH",
-    directVideoKey: "cooldown"
+    directVideoConfigKey: "cooldownPath"
   });
 
   return segments;
@@ -203,15 +178,27 @@ function locateSegment(elapsedMs) {
   };
 }
 
-function getSegmentVideoKey(segment) {
-  if (segment.directVideoKey) return segment.directVideoKey;
+function getVideoPathForSegment(segment) {
+  if (!workoutConfig) return null;
 
-  const blockMap = stationVideos[segment.blockIndex] || stationVideos[0];
-  return blockMap[screenIndex] || blockMap[0];
+  if (segment.directVideoConfigKey) {
+    return workoutConfig[segment.directVideoConfigKey] || null;
+  }
+
+  const blocks = workoutConfig.blocks || [];
+  const blockMap = blocks[segment.blockIndex];
+
+  if (!blockMap || !blockMap[screenIndex]) return null;
+  return blockMap[screenIndex];
 }
 
-function getVideoUrl(videoKey) {
-  return videoSources[videoKey] || videoSources.warmup;
+async function getVideoUrlFromPath(path) {
+  if (!path) return null;
+  if (urlCache[path]) return urlCache[path];
+
+  const url = await storage.ref(path).getDownloadURL();
+  urlCache[path] = url;
+  return url;
 }
 
 function getNextVideoInfo(fromIndex) {
@@ -220,11 +207,10 @@ function getNextVideoInfo(fromIndex) {
       return { index: i, segment: timeline[i] };
     }
   }
-
   return null;
 }
 
-function buildMediaRequest(info) {
+async function buildMediaRequest(info) {
   const { index, segment, segmentElapsedMs, finished } = info;
   const remain = Math.max(0, segment.duration - Math.floor(segmentElapsedMs / 1000));
 
@@ -242,18 +228,21 @@ function buildMediaRequest(info) {
       const nextVideoInfo = getNextVideoInfo(index);
 
       if (nextVideoInfo) {
-        const nextVideoKey = getSegmentVideoKey(nextVideoInfo.segment);
+        const nextPath = getVideoPathForSegment(nextVideoInfo.segment);
+        const nextUrl = await getVideoUrlFromPath(nextPath);
 
-        return {
-          showVideo: true,
-          sourceUrl: getVideoUrl(nextVideoKey),
-          contextKey: `preview:${index}`,
-          seekSeconds: 0,
-          shouldPlay: !state.paused && !finished,
-          centerText: "UPCOMING\nMOVEMENT",
-          labelText: "BREAK",
-          remain
-        };
+        if (nextUrl) {
+          return {
+            showVideo: true,
+            sourceUrl: nextUrl,
+            contextKey: `preview:${index}`,
+            seekSeconds: 0,
+            shouldPlay: !state.paused && !finished,
+            centerText: "UPCOMING\nMOVEMENT",
+            labelText: "BREAK",
+            remain
+          };
+        }
       }
     }
 
@@ -265,15 +254,16 @@ function buildMediaRequest(info) {
     };
   }
 
-  const videoKey = getSegmentVideoKey(segment);
+  const videoPath = getVideoPathForSegment(segment);
+  const sourceUrl = await getVideoUrlFromPath(videoPath);
 
   return {
-    showVideo: true,
-    sourceUrl: getVideoUrl(videoKey),
-    contextKey: `segment:${index}:${videoKey}`,
+    showVideo: !!sourceUrl,
+    sourceUrl,
+    contextKey: `segment:${index}:${videoPath || "missing"}`,
     seekSeconds: segmentElapsedMs / 1000,
     shouldPlay: !state.paused && !finished,
-    centerText: "",
+    centerText: sourceUrl ? "" : "MISSING\nVIDEO",
     labelText: segment.label,
     remain
   };
@@ -283,7 +273,6 @@ function clampSeek(seconds) {
   if (Number.isFinite(video.duration) && video.duration > 0) {
     return Math.max(0, Math.min(seconds, Math.max(0, video.duration - 0.1)));
   }
-
   return Math.max(0, seconds);
 }
 
@@ -292,9 +281,7 @@ function seekVideo(seconds) {
 
   try {
     video.currentTime = clampSeek(seconds);
-  } catch (error) {
-    // ignore early seek timing issues
-  }
+  } catch (error) {}
 }
 
 function safePlay() {
@@ -348,9 +335,25 @@ function syncVideo(request) {
   }
 }
 
-function render() {
+let renderToken = 0;
+
+async function render() {
+  const myToken = ++renderToken;
+
+  if (!workoutConfig) {
+    label.innerText = `SCREEN ${screenNumber}`;
+    timer.innerText = "--:--";
+    center.innerText = "LOADING\nWORKOUT";
+    center.style.display = "block";
+    video.pause();
+    video.style.display = "none";
+    return;
+  }
+
   const info = locateSegment(getElapsedMs());
-  const request = buildMediaRequest(info);
+  const request = await buildMediaRequest(info);
+
+  if (myToken !== renderToken) return;
 
   label.innerText = request.labelText;
   timer.innerText = format(request.remain);
@@ -375,7 +378,14 @@ function format(totalSeconds) {
 }
 
 db.ref("state").on("value", (snap) => {
-  state = { ...defaultState(), ...(snap.val() || {}) };
+  state = { startTime: Date.now(), paused: true, elapsed: 0, ...(snap.val() || {}) };
+  render();
+});
+
+db.ref("workoutConfig").on("value", (snap) => {
+  workoutConfig = snap.val() || null;
+  activeSource = "";
+  activeContextKey = "";
   render();
 });
 
