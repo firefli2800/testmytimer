@@ -16,7 +16,9 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 
 <body>
 
-<video id="video" muted playsinline loop></video>
+<!-- 🔥 TWO VIDEO BUFFERS -->
+<video id="videoA" muted playsinline loop></video>
+<video id="videoB" muted playsinline loop style="display:none"></video>
 
 <div id="overlay">
   <div id="label">LOADING...</div>
@@ -29,6 +31,7 @@ video{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
+/* 🔥 FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
@@ -42,12 +45,33 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const video = document.getElementById("video");
-const label = document.getElementById("label");
-const timer = document.getElementById("timer");
-const center = document.getElementById("center");
+/* 🔥 VIDEO ELEMENTS */
+const videoA = document.getElementById("videoA");
+const videoB = document.getElementById("videoB");
+let activeVideo = "A";
 
-// 🔥 VIDEOS
+function getCurrentVideo(){
+  return activeVideo === "A" ? videoA : videoB;
+}
+
+function getNextVideo(){
+  return activeVideo === "A" ? videoB : videoA;
+}
+
+function switchVideo(){
+  const current = getCurrentVideo();
+  const next = getNextVideo();
+
+  current.style.display = "none";
+  next.style.display = "block";
+
+  next.currentTime = 0;
+  next.play().catch(()=>{});
+
+  activeVideo = activeVideo === "A" ? "B" : "A";
+}
+
+/* 🔥 VIDEO MAP */
 const videos = {
   warmup: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
   workout1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
@@ -57,8 +81,36 @@ const videos = {
   stretch: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e"
 };
 
-// TIMELINE
+/* 🔥 FULL PRELOAD SYSTEM */
+const videoCache = {};
+
+function preloadAllVideos(){
+  Object.keys(videos).forEach(key => {
+    const v = document.createElement("video");
+    v.src = videos[key];
+    v.preload = "auto";
+    v.muted = true;
+    videoCache[key] = v;
+  });
+
+  console.log("All videos preloaded");
+}
+
+/* 🔥 USE CACHED VIDEO */
+function useCachedVideo(key){
+  const next = getNextVideo();
+  next.src = videoCache[key].src;
+  next.load();
+}
+
+/* 🔥 UI */
+const label = document.getElementById("label");
+const timer = document.getElementById("timer");
+const center = document.getElementById("center");
+
+/* 🔥 TIMELINE */
 const timeline = [];
+
 timeline.push({type:"video",label:"WARMUP",duration:360,video:"warmup"});
 
 function addBlock(n){
@@ -70,30 +122,19 @@ function addBlock(n){
 }
 
 addBlock(1); addBlock(2); addBlock(3); addBlock(4);
+
 timeline.push({type:"video",label:"STRETCH",duration:360,video:"stretch"});
 
+/* 🔥 FIREBASE STATE */
 let state = null;
 
 db.ref("state").on("value", snap=>{
   state = snap.val();
 });
 
-function loadVideo(key){
-  video.src = videos[key] + "&t=" + Date.now();
-  video.load();
-  video.play().catch(()=>{});
-}
-
+/* 🔥 MAIN LOOP */
 setInterval(()=>{
-  if(!state){
-    label.innerText="WAITING...";
-    return;
-  }
-
-  if(state.paused){
-    label.innerText="PAUSED";
-    return;
-  }
+  if(!state || state.paused) return;
 
   const segment = timeline[state.index];
   if(!segment) return;
@@ -105,43 +146,49 @@ setInterval(()=>{
   updateTimer(remain);
 
   if(segment.type==="video"){
-    video.style.display="block";
     center.style.display="none";
 
-    if(!video.src.includes(videos[segment.video])){
-      loadVideo(segment.video);
+    const current = getCurrentVideo();
+
+    if(!current.src.includes(videos[segment.video])){
+      useCachedVideo(segment.video);
+      switchVideo();
     }
   }
 
   if(segment.type==="rest"){
-    video.pause();
-    video.style.display="none";
+    getCurrentVideo().pause();
+    getCurrentVideo().style.display="none";
     center.innerText="REST";
     center.style.display="block";
   }
 
   if(segment.type==="break"){
-    video.pause();
-    video.style.display="none";
+    getCurrentVideo().pause();
+    getCurrentVideo().style.display="none";
     center.style.display="block";
 
     if(remain<=15){
       center.innerText="NEXT";
-      video.style.display="block";
-      loadVideo(segment.next);
-    }else{
+      useCachedVideo(segment.next);
+      switchVideo();
+    } else {
       center.innerText="BREAK";
     }
   }
 
 },250);
 
+/* 🔥 TIMER */
 function updateTimer(s){
   s=Math.max(0,s);
   const m=Math.floor(s/60);
   const sec=s%60;
   timer.innerText=`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
+
+/* 🔥 INIT */
+preloadAllVideos();
 </script>
 
 </body>
