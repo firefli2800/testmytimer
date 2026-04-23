@@ -5,46 +5,21 @@
 <title>Gym Display + Controller</title>
 
 <style>
-  html, body {
-    margin: 0;
-    height: 100%;
-    background: black;
-    color: white;
-    font-family: Arial, sans-serif;
-  }
-
-  video {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    object-fit: cover;
-  }
-
-  #overlay {
-    position: fixed;
-    top: 20px;
-    right: 30px;
-    text-align: right;
-    z-index: 10;
-  }
-
-  #label { font-size: 40px; font-weight: bold; }
+  html, body { margin: 0; height: 100%; background: black; color: white; font-family: Arial; }
+  video { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; }
+  #overlay { position: fixed; top: 20px; right: 30px; z-index: 10; }
+  #label { font-size: 40px; }
   #timer { font-size: 80px; }
 
   #centerText {
     position: fixed;
-    top: 50%;
-    left: 50%;
+    top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     font-size: 100px;
-    font-weight: bold;
     display: none;
     z-index: 20;
   }
 
-  /* 🔥 CONTROLLER UI */
   #controls {
     position: fixed;
     bottom: 20px;
@@ -52,12 +27,7 @@
     z-index: 30;
   }
 
-  button {
-    margin: 5px;
-    padding: 10px 15px;
-    font-size: 14px;
-    cursor: pointer;
-  }
+  button { margin: 5px; padding: 10px; }
 </style>
 </head>
 
@@ -66,20 +36,19 @@
 <video id="video" muted playsinline loop></video>
 
 <div id="overlay">
-  <div id="label">READY</div>
-  <div id="timer">00:00</div>
+  <div id="label"></div>
+  <div id="timer"></div>
 </div>
 
 <div id="centerText"></div>
 
-<!-- 🔥 CONTROLLER -->
 <div id="controls">
-  <button onclick="play()">Play / Resume</button>
+  <button onclick="play()">Play</button>
   <button onclick="pause()">Pause</button>
   <button onclick="stop()">Stop Video</button>
   <button onclick="reset()">Reset</button>
   <button onclick="nextSegment()">Next</button>
-  <button onclick="prevSegment()">Previous</button>
+  <button onclick="prevSegment()">Prev</button>
 </div>
 
 <script>
@@ -88,154 +57,141 @@ const label = document.getElementById("label");
 const timer = document.getElementById("timer");
 const centerText = document.getElementById("centerText");
 
-// CONFIG
 const videos = {
   warmup: "VIDEO_URL",
-  workout1: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Back%20Opener.mp4?alt=media&token=b1db24b5-370e-4f86-ac23-e6c5f269fb8e",
-  workout2: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Cat%20Cow.mp4?alt=media&token=e81ab0f9-67dc-4145-8494-614a47b121e9",
-  workout3: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Dynamic%2090-90%20Hip%20Twist.mp4?alt=media&token=cb9f2e38-4de6-48ca-a29b-cd94a7531aed",
-  workout4: "https://firebasestorage.googleapis.com/v0/b/timer-app-30e7d.firebasestorage.app/o/Squat%20Side%20Bends(1).mp4?alt=media&token=368da077-c114-4024-8109-2716cb2b32ab",
+  workout1: "VIDEO_URL",
+  workout2: "VIDEO_URL",
+  workout3: "VIDEO_URL",
+  workout4: "VIDEO_URL",
   stretch: "VIDEO_URL"
 };
 
-// TIMELINE
 const timeline = [];
-
 timeline.push({ type: "video", label: "WARMUP", duration: 360, video: "warmup" });
 
-function addWorkoutBlock(name) {
-  for (let i = 1; i <= 3; i++) {
-    timeline.push({ type: "video", label: `WORK ${name}-${i}`, duration: 45, video: `workout${name}` });
-    timeline.push({ type: "rest", label: "REST", duration: 15 });
+function addBlock(n) {
+  for (let i=1;i<=3;i++){
+    timeline.push({ type:"video", label:`WORK ${n}-${i}`, duration:45, video:`workout${n}` });
+    timeline.push({ type:"rest", label:"REST", duration:15 });
   }
-  timeline.push({ type: "break", label: "BREAK", duration: 60, next: `workout${parseInt(name) + 1}` });
+  timeline.push({ type:"break", label:"BREAK", duration:60, next:`workout${n+1}` });
 }
 
-addWorkoutBlock("1");
-addWorkoutBlock("2");
-addWorkoutBlock("3");
-addWorkoutBlock("4");
+addBlock(1); addBlock(2); addBlock(3); addBlock(4);
+timeline.push({ type:"video", label:"STRETCH", duration:360, video:"stretch" });
 
-timeline.push({ type: "video", label: "STRETCH", duration: 360, video: "stretch" });
-
-// STATE
 let index = 0;
 let startTime = Date.now();
 let paused = false;
 let pausedTime = 0;
 let videoStopped = false;
 
-// VIDEO LOADER
-function loadVideo(key) {
+function loadVideo(key){
   const url = videos[key];
   video.src = url + "&t=" + Date.now();
   video.load();
-  video.play().catch(() => {
-    document.body.addEventListener("click", () => video.play());
-  });
+  video.play().catch(()=>{});
 }
 
-// MAIN LOOP
-setInterval(() => {
-  if (paused) return;
-
+function applySegment(){
   const segment = timeline[index];
-  const elapsed = Math.floor((Date.now() - startTime) / 1000);
-  const remain = segment.duration - elapsed;
 
   label.innerText = segment.label;
-  updateTimer(remain);
+  centerText.style.display = "none";
+  videoStopped = false;
 
-  if (!videoStopped) {
-    if (segment.type === "video") {
-      centerText.style.display = "none";
-      video.style.display = "block";
-
-      if (!video.src.includes(videos[segment.video])) {
-        loadVideo(segment.video);
-      }
-    }
-
-    if (segment.type === "rest") {
-      video.pause();
-      video.style.display = "none";
-      centerText.innerText = "REST";
-      centerText.style.display = "block";
-    }
-
-    if (segment.type === "break") {
-      video.pause();
-      video.style.display = "none";
-      centerText.style.display = "block";
-
-      if (remain <= 15 && segment.next && videos[segment.next]) {
-        centerText.innerText = "NEXT";
-        video.style.display = "block";
-        loadVideo(segment.next);
-      } else {
-        centerText.innerText = "BREAK";
-      }
-    }
+  if(segment.type === "video"){
+    video.style.display = "block";
+    loadVideo(segment.video);
   }
 
-  if (remain <= 0) {
+  if(segment.type === "rest"){
+    video.pause();
+    video.style.display = "none";
+    centerText.innerText = "REST";
+    centerText.style.display = "block";
+  }
+
+  if(segment.type === "break"){
+    video.pause();
+    video.style.display = "none";
+    centerText.innerText = "BREAK";
+    centerText.style.display = "block";
+  }
+}
+
+setInterval(()=>{
+  if(paused) return;
+
+  const segment = timeline[index];
+  const elapsed = Math.floor((Date.now()-startTime)/1000);
+  const remain = segment.duration - elapsed;
+
+  updateTimer(remain);
+
+  if(segment.type === "break" && remain <= 15){
+    centerText.innerText = "NEXT";
+    video.style.display = "block";
+    loadVideo(segment.next);
+  }
+
+  if(remain <= 0){
     nextSegment();
   }
 
-}, 250);
+},250);
 
-// CONTROLS
+// 🔥 CONTROLS (FIXED)
 
-function play() {
-  if (paused) {
+function play(){
+  if(paused){
     startTime += (Date.now() - pausedTime);
     paused = false;
   }
   video.play();
 }
 
-function pause() {
+function pause(){
   paused = true;
   pausedTime = Date.now();
   video.pause();
 }
 
-function stop() {
+function stop(){
   videoStopped = true;
-  video.pause();
+  video.pause(); // 🔥 THIS NOW WORKS
 }
 
-function reset() {
+function reset(){
   index = 0;
   startTime = Date.now();
   paused = false;
-  videoStopped = false;
-  loadVideo("warmup");
+  applySegment(); // 🔥 FORCE UPDATE
 }
 
-function nextSegment() {
+function nextSegment(){
   index++;
-  if (index >= timeline.length) index = 0;
+  if(index >= timeline.length) index = 0;
   startTime = Date.now();
-  videoStopped = false;
+  applySegment(); // 🔥 FORCE UPDATE
 }
 
-function prevSegment() {
+function prevSegment(){
   index--;
-  if (index < 0) index = timeline.length - 1;
+  if(index < 0) index = timeline.length - 1;
   startTime = Date.now();
-  videoStopped = false;
+  applySegment(); // 🔥 FORCE UPDATE
 }
 
-// TIMER
-function updateTimer(seconds) {
-  const s = Math.max(0, seconds);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-
-  timer.innerText =
-    `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+function updateTimer(s){
+  s = Math.max(0,s);
+  const m = Math.floor(s/60);
+  const sec = s%60;
+  timer.innerText = `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
+
+// 🔥 INITIAL LOAD
+applySegment();
 </script>
 
 </body>
