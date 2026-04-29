@@ -4,20 +4,73 @@
 <meta charset="utf-8">
 <title>Workout Builder</title>
 <style>
-body{font-family:Arial,sans-serif;padding:20px;background:#111;color:#fff}
-h1,h2{margin-top:0}
-.section{margin-bottom:24px;padding:16px;border:1px solid #333;border-radius:8px}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px}
-label{display:block;font-size:14px;margin-bottom:6px}
-select{width:100%;padding:8px}
-button{margin-top:16px;margin-right:10px;padding:10px 16px;font-size:16px}
+body{
+  font-family:Arial,sans-serif;
+  padding:20px;
+  background:#111;
+  color:#fff;
+}
+h1,h2,h3{margin-top:0}
+.section{
+  margin-bottom:24px;
+  padding:16px;
+  border:1px solid #333;
+  border-radius:8px;
+  background:#171717;
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(180px,1fr));
+  gap:12px;
+}
+.timingGrid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(120px,1fr));
+  gap:12px;
+  margin-bottom:16px;
+}
+.stationBox{
+  padding:12px;
+  border:1px solid #333;
+  border-radius:8px;
+  background:#101010;
+}
+.actionGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+label{
+  display:block;
+  font-size:14px;
+  margin-bottom:6px;
+}
+select,input{
+  width:100%;
+  padding:8px;
+  box-sizing:border-box;
+}
+button{
+  margin-top:16px;
+  margin-right:10px;
+  padding:10px 16px;
+  font-size:16px;
+}
 small{color:#bbb}
+#totalTime{
+  font-size:28px;
+  font-weight:bold;
+}
+#status{
+  margin-top:12px;
+  color:#bbb;
+}
 </style>
 </head>
 <body>
 
 <h1>Workout Builder</h1>
-<small>Pick warmup, cooldown, and the 3 station videos for each of 6 blocks.</small>
+<small>Pick warmup, cooldown, 2 actions per station, and custom timing for each block.</small>
 
 <div class="section">
   <h2>Quick Actions</h2>
@@ -27,22 +80,41 @@ small{color:#bbb}
 
 <div class="section">
   <h2>Warmup / Cooldown</h2>
+
   <div class="grid">
     <div>
       <label for="warmupPath">Warmup Video</label>
       <select id="warmupPath"></select>
     </div>
+
     <div>
-      <label for="cooldownPath">Cooldown Video</label>
+      <label for="warmupSeconds">Warmup Seconds</label>
+      <input id="warmupSeconds" type="number" min="0" value="180" oninput="updateTotalTime()">
+    </div>
+
+    <div></div>
+
+    <div>
+      <label for="cooldownPath">Cooldown / Stretch Video</label>
       <select id="cooldownPath"></select>
+    </div>
+
+    <div>
+      <label for="cooldownSeconds">Cooldown / Stretch Seconds</label>
+      <input id="cooldownSeconds" type="number" min="0" value="180" oninput="updateTotalTime()">
     </div>
   </div>
 </div>
 
 <div id="blocksContainer"></div>
 
+<div class="section">
+  <h2>Total Workout Time</h2>
+  <div id="totalTime">00:00</div>
+</div>
+
 <button onclick="saveWorkout()">Save Workout</button>
-<div id="status" style="margin-top:12px;"></div>
+<div id="status"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -63,13 +135,83 @@ const storage = firebase.storage();
 
 const warmupSelect = document.getElementById("warmupPath");
 const cooldownSelect = document.getElementById("cooldownPath");
+const warmupSecondsInput = document.getElementById("warmupSeconds");
+const cooldownSecondsInput = document.getElementById("cooldownSeconds");
 const blocksContainer = document.getElementById("blocksContainer");
 const statusEl = document.getElementById("status");
+const totalTimeEl = document.getElementById("totalTime");
 
 let workoutConfig = null;
 let warmupFiles = [];
 let cooldownFiles = [];
 let workoutFiles = [];
+
+function defaultWorkoutConfig() {
+  return {
+    warmupSeconds: 180,
+    cooldownSeconds: 180,
+    warmupPath: "",
+    cooldownPath: "",
+    blocks: Array.from({ length: 6 }, () => ({
+      workSeconds: 45,
+      restSeconds: 15,
+      rounds: 3,
+      breakSeconds: 60,
+      stations: [
+        ["", ""],
+        ["", ""],
+        ["", ""]
+      ]
+    }))
+  };
+}
+
+function normalizeConfig(config) {
+  const base = defaultWorkoutConfig();
+  const incoming = config || {};
+
+  const normalized = {
+    ...base,
+    ...incoming,
+    blocks: []
+  };
+
+  for (let i = 0; i < 6; i += 1) {
+    const oldBlock = incoming.blocks?.[i];
+
+    if (Array.isArray(oldBlock)) {
+      normalized.blocks.push({
+        ...base.blocks[i],
+        stations: [
+          [oldBlock[0] || "", ""],
+          [oldBlock[1] || "", ""],
+          [oldBlock[2] || "", ""]
+        ]
+      });
+    } else {
+      normalized.blocks.push({
+        ...base.blocks[i],
+        ...(oldBlock || {}),
+        stations: [
+          [
+            oldBlock?.stations?.[0]?.[0] || "",
+            oldBlock?.stations?.[0]?.[1] || ""
+          ],
+          [
+            oldBlock?.stations?.[1]?.[0] || "",
+            oldBlock?.stations?.[1]?.[1] || ""
+          ],
+          [
+            oldBlock?.stations?.[2]?.[0] || "",
+            oldBlock?.stations?.[2]?.[1] || ""
+          ]
+        ]
+      });
+    }
+  }
+
+  return normalized;
+}
 
 function listFolder(path) {
   return storage.ref(path).listAll().then(res => {
@@ -93,25 +235,60 @@ function buildBlocksUI() {
 
     section.innerHTML = `
       <h2>Block ${block + 1}</h2>
-      <div class="grid">
+
+      <div class="timingGrid">
         <div>
-          <label for="block_${block}_station_0">Station 1</label>
-          <select id="block_${block}_station_0"></select>
+          <label for="block_${block}_workSeconds">Work Seconds</label>
+          <input id="block_${block}_workSeconds" type="number" min="1" value="45" oninput="updateTotalTime()">
         </div>
+
         <div>
-          <label for="block_${block}_station_1">Station 2</label>
-          <select id="block_${block}_station_1"></select>
+          <label for="block_${block}_restSeconds">Rest Seconds</label>
+          <input id="block_${block}_restSeconds" type="number" min="0" value="15" oninput="updateTotalTime()">
         </div>
+
         <div>
-          <label for="block_${block}_station_2">Station 3</label>
-          <select id="block_${block}_station_2"></select>
+          <label for="block_${block}_rounds">Rounds</label>
+          <input id="block_${block}_rounds" type="number" min="1" value="3" oninput="updateTotalTime()">
+        </div>
+
+        <div>
+          <label for="block_${block}_breakSeconds">Break Seconds After Block</label>
+          <input id="block_${block}_breakSeconds" type="number" min="0" value="60" oninput="updateTotalTime()">
         </div>
       </div>
+
+      <div class="grid">
+        ${buildStationHTML(block, 0)}
+        ${buildStationHTML(block, 1)}
+        ${buildStationHTML(block, 2)}
+      </div>
+
       <button type="button" onclick="copyBlockToNext(${block})">Copy this block to next</button>
     `;
 
     blocksContainer.appendChild(section);
   }
+}
+
+function buildStationHTML(block, station) {
+  return `
+    <div class="stationBox">
+      <h3>Station ${station + 1}</h3>
+
+      <div class="actionGrid">
+        <div>
+          <label for="block_${block}_station_${station}_action_0">Action A</label>
+          <select id="block_${block}_station_${station}_action_0"></select>
+        </div>
+
+        <div>
+          <label for="block_${block}_station_${station}_action_1">Action B</label>
+          <select id="block_${block}_station_${station}_action_1"></select>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function populateSelect(select, items, selectedValue) {
@@ -133,55 +310,103 @@ function populateSelect(select, items, selectedValue) {
 }
 
 function renderBuilder() {
+  const config = normalizeConfig(workoutConfig);
+
   buildBlocksUI();
 
-  populateSelect(warmupSelect, warmupFiles, workoutConfig?.warmupPath || "");
-  populateSelect(cooldownSelect, cooldownFiles, workoutConfig?.cooldownPath || "");
+  warmupSecondsInput.value = config.warmupSeconds;
+  cooldownSecondsInput.value = config.cooldownSeconds;
+
+  populateSelect(warmupSelect, warmupFiles, config.warmupPath || "");
+  populateSelect(cooldownSelect, cooldownFiles, config.cooldownPath || "");
 
   for (let block = 0; block < 6; block += 1) {
+    const blockConfig = config.blocks[block];
+
+    document.getElementById(`block_${block}_workSeconds`).value = blockConfig.workSeconds;
+    document.getElementById(`block_${block}_restSeconds`).value = blockConfig.restSeconds;
+    document.getElementById(`block_${block}_rounds`).value = blockConfig.rounds;
+    document.getElementById(`block_${block}_breakSeconds`).value = blockConfig.breakSeconds;
+
     for (let station = 0; station < 3; station += 1) {
-      const select = document.getElementById(`block_${block}_station_${station}`);
-      const selectedValue = workoutConfig?.blocks?.[block]?.[station] || "";
-      populateSelect(select, workoutFiles, selectedValue);
+      for (let action = 0; action < 2; action += 1) {
+        const select = document.getElementById(`block_${block}_station_${station}_action_${action}`);
+        const selectedValue = blockConfig.stations?.[station]?.[action] || "";
+        populateSelect(select, workoutFiles, selectedValue);
+      }
     }
   }
+
+  updateTotalTime();
 }
 
 function copyBlockToNext(block) {
   if (block >= 5) return;
 
-  for (let station = 0; station < 3; station += 1) {
-    const current = document.getElementById(`block_${block}_station_${station}`);
-    const next = document.getElementById(`block_${block + 1}_station_${station}`);
-    next.value = current.value;
-  }
+  copyBlockValues(block, block + 1);
+  updateTotalTime();
 }
 
 function copyBlockGroup(sourceBlock, targetBlocks) {
   targetBlocks.forEach(targetBlock => {
-    for (let station = 0; station < 3; station += 1) {
-      const source = document.getElementById(`block_${sourceBlock}_station_${station}`);
-      const target = document.getElementById(`block_${targetBlock}_station_${station}`);
+    copyBlockValues(sourceBlock, targetBlock);
+  });
+
+  updateTotalTime();
+}
+
+function copyBlockValues(sourceBlock, targetBlock) {
+  document.getElementById(`block_${targetBlock}_workSeconds`).value =
+    document.getElementById(`block_${sourceBlock}_workSeconds`).value;
+
+  document.getElementById(`block_${targetBlock}_restSeconds`).value =
+    document.getElementById(`block_${sourceBlock}_restSeconds`).value;
+
+  document.getElementById(`block_${targetBlock}_rounds`).value =
+    document.getElementById(`block_${sourceBlock}_rounds`).value;
+
+  document.getElementById(`block_${targetBlock}_breakSeconds`).value =
+    document.getElementById(`block_${sourceBlock}_breakSeconds`).value;
+
+  for (let station = 0; station < 3; station += 1) {
+    for (let action = 0; action < 2; action += 1) {
+      const source = document.getElementById(`block_${sourceBlock}_station_${station}_action_${action}`);
+      const target = document.getElementById(`block_${targetBlock}_station_${station}_action_${action}`);
       target.value = source.value;
     }
-  });
+  }
+}
+
+function getNumberValue(id, fallback) {
+  const value = Number(document.getElementById(id).value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function calculateTotalSecondsFromForm() {
+  let total = 0;
+
+  total += getNumberValue("warmupSeconds", 180);
+
+  for (let block = 0; block < 6; block += 1) {
+    const workSeconds = getNumberValue(`block_${block}_workSeconds`, 45);
+    const restSeconds = getNumberValue(`block_${block}_restSeconds`, 15);
+    const rounds = getNumberValue(`block_${block}_rounds`, 3);
+    const breakSeconds = getNumberValue(`block_${block}_breakSeconds`, 60);
+
+    total += ((workSeconds + restSeconds) * rounds) + breakSeconds;
+  }
+
+  total += getNumberValue("cooldownSeconds", 180);
+
+  return total;
+}
+
+function updateTotalTime() {
+  totalTimeEl.innerText = format(calculateTotalSecondsFromForm());
 }
 
 function saveWorkout() {
   const blocks = [];
-
-  for (let block = 0; block < 6; block += 1) {
-    const row = [];
-    for (let station = 0; station < 3; station += 1) {
-      const value = document.getElementById(`block_${block}_station_${station}`).value;
-      if (!value) {
-        statusEl.textContent = `Missing video in Block ${block + 1}, Station ${station + 1}`;
-        return;
-      }
-      row.push(value);
-    }
-    blocks.push(row);
-  }
 
   if (!warmupSelect.value) {
     statusEl.textContent = "Missing warmup video.";
@@ -193,19 +418,62 @@ function saveWorkout() {
     return;
   }
 
+  for (let block = 0; block < 6; block += 1) {
+    const workSeconds = getNumberValue(`block_${block}_workSeconds`, 45);
+    const restSeconds = getNumberValue(`block_${block}_restSeconds`, 15);
+    const rounds = getNumberValue(`block_${block}_rounds`, 3);
+    const breakSeconds = getNumberValue(`block_${block}_breakSeconds`, 60);
+
+    const stations = [];
+
+    for (let station = 0; station < 3; station += 1) {
+      const actionA = document.getElementById(`block_${block}_station_${station}_action_0`).value;
+      const actionB = document.getElementById(`block_${block}_station_${station}_action_1`).value;
+
+      if (!actionA) {
+        statusEl.textContent = `Missing Action A in Block ${block + 1}, Station ${station + 1}`;
+        return;
+      }
+
+      if (!actionB) {
+        statusEl.textContent = `Missing Action B in Block ${block + 1}, Station ${station + 1}`;
+        return;
+      }
+
+      stations.push([actionA, actionB]);
+    }
+
+    blocks.push({
+      workSeconds,
+      restSeconds,
+      rounds,
+      breakSeconds,
+      stations
+    });
+  }
+
   const newConfig = {
     warmupPath: warmupSelect.value,
     cooldownPath: cooldownSelect.value,
+    warmupSeconds: getNumberValue("warmupSeconds", 180),
+    cooldownSeconds: getNumberValue("cooldownSeconds", 180),
     blocks
   };
 
   db.ref("workoutConfig").set(newConfig)
     .then(() => {
-      statusEl.textContent = "Workout saved.";
+      statusEl.textContent = `Workout saved. Total time: ${format(calculateTotalSecondsFromForm())}`;
     })
     .catch((err) => {
       statusEl.textContent = "Error saving workout: " + err.message;
     });
+}
+
+function format(totalSeconds) {
+  const safe = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 Promise.all([
@@ -223,6 +491,7 @@ Promise.all([
 
 db.ref("workoutConfig").on("value", snap => {
   workoutConfig = snap.val() || null;
+
   if (warmupFiles.length || cooldownFiles.length || workoutFiles.length) {
     renderBuilder();
   }
