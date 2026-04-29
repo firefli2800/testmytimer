@@ -40,6 +40,27 @@ h1,h2,h3{margin-top:0}
   grid-template-columns:1fr 1fr;
   gap:10px;
 }
+.modeGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(180px,1fr));
+  gap:12px;
+}
+.checkboxCard{
+  padding:12px;
+  border:1px solid #333;
+  border-radius:8px;
+  background:#101010;
+}
+.checkboxCard label{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:16px;
+  cursor:pointer;
+}
+.checkboxCard input{
+  width:auto;
+}
 label{
   display:block;
   font-size:14px;
@@ -65,12 +86,51 @@ small{color:#bbb}
   margin-top:12px;
   color:#bbb;
 }
+.disabledNote{
+  color:#f6c453;
+  margin-top:8px;
+  font-size:14px;
+}
 </style>
 </head>
 <body>
 
 <h1>Workout Builder</h1>
-<small>Pick warmup, cooldown, 2 actions per station, and custom timing for each block.</small>
+<small>Pick warmup, cooldown, 2 actions per station, custom timing, and class mode.</small>
+
+<div class="section">
+  <h2>Workout Mode</h2>
+
+  <div class="modeGrid">
+    <div class="checkboxCard">
+      <label>
+        <input id="includeWarmup" type="checkbox" checked onchange="updateTotalTime()">
+        Include Warmup
+      </label>
+      <small>Used in normal class mode.</small>
+    </div>
+
+    <div class="checkboxCard">
+      <label>
+        <input id="includeCooldown" type="checkbox" checked onchange="updateTotalTime()">
+        Include Cooldown / Stretch
+      </label>
+      <small>Used in normal class mode.</small>
+    </div>
+
+    <div class="checkboxCard">
+      <label>
+        <input id="loopBlocks" type="checkbox" onchange="updateTotalTime()">
+        Loop Blocks Continuously
+      </label>
+      <small>Endless circuit mode. Warmup/cooldown are skipped.</small>
+    </div>
+  </div>
+
+  <div class="disabledNote">
+    Eugene mode: turn Warmup OFF, Cooldown OFF, and Loop Blocks ON.
+  </div>
+</div>
 
 <div class="section">
   <h2>Quick Actions</h2>
@@ -133,6 +193,10 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const storage = firebase.storage();
 
+const includeWarmupInput = document.getElementById("includeWarmup");
+const includeCooldownInput = document.getElementById("includeCooldown");
+const loopBlocksInput = document.getElementById("loopBlocks");
+
 const warmupSelect = document.getElementById("warmupPath");
 const cooldownSelect = document.getElementById("cooldownPath");
 const warmupSecondsInput = document.getElementById("warmupSeconds");
@@ -148,10 +212,15 @@ let workoutFiles = [];
 
 function defaultWorkoutConfig() {
   return {
+    includeWarmup: true,
+    includeCooldown: true,
+    loopBlocks: false,
+
     warmupSeconds: 180,
     cooldownSeconds: 180,
     warmupPath: "",
     cooldownPath: "",
+
     blocks: Array.from({ length: 6 }, () => ({
       workSeconds: 45,
       restSeconds: 15,
@@ -173,6 +242,9 @@ function normalizeConfig(config) {
   const normalized = {
     ...base,
     ...incoming,
+    includeWarmup: incoming.includeWarmup !== undefined ? incoming.includeWarmup : base.includeWarmup,
+    includeCooldown: incoming.includeCooldown !== undefined ? incoming.includeCooldown : base.includeCooldown,
+    loopBlocks: incoming.loopBlocks !== undefined ? incoming.loopBlocks : base.loopBlocks,
     blocks: []
   };
 
@@ -314,6 +386,10 @@ function renderBuilder() {
 
   buildBlocksUI();
 
+  includeWarmupInput.checked = config.includeWarmup !== false;
+  includeCooldownInput.checked = config.includeCooldown !== false;
+  loopBlocksInput.checked = config.loopBlocks === true;
+
   warmupSecondsInput.value = config.warmupSeconds;
   cooldownSecondsInput.value = config.cooldownSeconds;
 
@@ -385,7 +461,13 @@ function getNumberValue(id, fallback) {
 function calculateTotalSecondsFromForm() {
   let total = 0;
 
-  total += getNumberValue("warmupSeconds", 180);
+  const includeWarmup = includeWarmupInput.checked;
+  const includeCooldown = includeCooldownInput.checked;
+  const loopBlocks = loopBlocksInput.checked;
+
+  if (!loopBlocks && includeWarmup) {
+    total += getNumberValue("warmupSeconds", 180);
+  }
 
   for (let block = 0; block < 6; block += 1) {
     const workSeconds = getNumberValue(`block_${block}_workSeconds`, 45);
@@ -396,24 +478,37 @@ function calculateTotalSecondsFromForm() {
     total += ((workSeconds + restSeconds) * rounds) + breakSeconds;
   }
 
-  total += getNumberValue("cooldownSeconds", 180);
+  if (!loopBlocks && includeCooldown) {
+    total += getNumberValue("cooldownSeconds", 180);
+  }
 
   return total;
 }
 
 function updateTotalTime() {
-  totalTimeEl.innerText = format(calculateTotalSecondsFromForm());
+  const loopBlocks = loopBlocksInput.checked;
+  const total = calculateTotalSecondsFromForm();
+
+  if (loopBlocks) {
+    totalTimeEl.innerText = `${format(total)} per loop / loops continuously`;
+  } else {
+    totalTimeEl.innerText = format(total);
+  }
 }
 
 function saveWorkout() {
   const blocks = [];
 
-  if (!warmupSelect.value) {
+  const includeWarmup = includeWarmupInput.checked;
+  const includeCooldown = includeCooldownInput.checked;
+  const loopBlocks = loopBlocksInput.checked;
+
+  if (!loopBlocks && includeWarmup && !warmupSelect.value) {
     statusEl.textContent = "Missing warmup video.";
     return;
   }
 
-  if (!cooldownSelect.value) {
+  if (!loopBlocks && includeCooldown && !cooldownSelect.value) {
     statusEl.textContent = "Missing cooldown video.";
     return;
   }
@@ -453,16 +548,25 @@ function saveWorkout() {
   }
 
   const newConfig = {
-    warmupPath: warmupSelect.value,
-    cooldownPath: cooldownSelect.value,
+    includeWarmup,
+    includeCooldown,
+    loopBlocks,
+
+    warmupPath: warmupSelect.value || "",
+    cooldownPath: cooldownSelect.value || "",
     warmupSeconds: getNumberValue("warmupSeconds", 180),
     cooldownSeconds: getNumberValue("cooldownSeconds", 180),
+
     blocks
   };
 
   db.ref("workoutConfig").set(newConfig)
     .then(() => {
-      statusEl.textContent = `Workout saved. Total time: ${format(calculateTotalSecondsFromForm())}`;
+      const totalText = loopBlocks
+        ? `${format(calculateTotalSecondsFromForm())} per loop / loops continuously`
+        : format(calculateTotalSecondsFromForm());
+
+      statusEl.textContent = `Workout saved. Total time: ${totalText}`;
     })
     .catch((err) => {
       statusEl.textContent = "Error saving workout: " + err.message;
