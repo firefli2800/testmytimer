@@ -49,7 +49,7 @@ html,body{
 video{
   width:100%;
   height:100%;
-  object-fit:cover;
+  object-fit:contain;
   background:#000;
 }
 
@@ -186,10 +186,15 @@ let renderToken = 0;
 
 function defaultWorkoutConfig() {
   return {
+    includeWarmup: true,
+    includeCooldown: true,
+    loopBlocks: false,
+
     warmupSeconds: 180,
     cooldownSeconds: 180,
     warmupPath: "",
     cooldownPath: "",
+
     blocks: Array.from({ length: 6 }, () => ({
       workSeconds: 45,
       restSeconds: 15,
@@ -211,6 +216,9 @@ function normalizeConfig(config) {
   const normalized = {
     ...base,
     ...incoming,
+    includeWarmup: incoming.includeWarmup !== undefined ? incoming.includeWarmup : base.includeWarmup,
+    includeCooldown: incoming.includeCooldown !== undefined ? incoming.includeCooldown : base.includeCooldown,
+    loopBlocks: incoming.loopBlocks !== undefined ? incoming.loopBlocks : base.loopBlocks,
     blocks: []
   };
 
@@ -255,12 +263,18 @@ function buildTimeline() {
   const config = workoutConfig || defaultWorkoutConfig();
   const segments = [];
 
-  segments.push({
-    kind: "singleVideo",
-    duration: Number(config.warmupSeconds) || 180,
-    label: "WARMUP",
-    directVideoConfigKey: "warmupPath"
-  });
+  /*
+    If loopBlocks is ON, this becomes endless circuit mode.
+    In that mode, warmup and cooldown are intentionally skipped.
+  */
+  if (!config.loopBlocks && config.includeWarmup !== false) {
+    segments.push({
+      kind: "singleVideo",
+      duration: Number(config.warmupSeconds) || 180,
+      label: "WARMUP",
+      directVideoConfigKey: "warmupPath"
+    });
+  }
 
   config.blocks.forEach((block, blockIndex) => {
     const rounds = Number(block.rounds) || 3;
@@ -278,14 +292,16 @@ function buildTimeline() {
         label: `ROUND ${roundIndex} OF ${rounds}`
       });
 
-      segments.push({
-        kind: "rest",
-        duration: restSeconds,
-        blockIndex,
-        roundIndex,
-        rounds,
-        label: "REST"
-      });
+      if (restSeconds > 0) {
+        segments.push({
+          kind: "rest",
+          duration: restSeconds,
+          blockIndex,
+          roundIndex,
+          rounds,
+          label: "REST"
+        });
+      }
     }
 
     if (breakSeconds > 0) {
@@ -298,12 +314,14 @@ function buildTimeline() {
     }
   });
 
-  segments.push({
-    kind: "singleVideo",
-    duration: Number(config.cooldownSeconds) || 180,
-    label: "STRETCH",
-    directVideoConfigKey: "cooldownPath"
-  });
+  if (!config.loopBlocks && config.includeCooldown !== false) {
+    segments.push({
+      kind: "singleVideo",
+      duration: Number(config.cooldownSeconds) || 180,
+      label: "STRETCH",
+      directVideoConfigKey: "cooldownPath"
+    });
+  }
 
   return segments;
 }
@@ -319,9 +337,15 @@ function getTotalDurationMs() {
 function getElapsedMs() {
   const totalDurationMs = getTotalDurationMs();
 
-  const raw = state.paused
+  let raw = state.paused
     ? (state.elapsed || 0)
     : (Date.now() - (state.startTime || Date.now()));
+
+  raw = Math.max(0, raw);
+
+  if (workoutConfig?.loopBlocks && totalDurationMs > 0) {
+    return raw % totalDurationMs;
+  }
 
   return Math.max(0, Math.min(raw, totalDurationMs));
 }
@@ -329,6 +353,15 @@ function getElapsedMs() {
 function locateSegment(elapsedMs) {
   const timeline = getTimeline();
   const totalDurationMs = getTotalDurationMs();
+
+  if (!timeline.length) {
+    return {
+      index: 0,
+      segment: { kind: "none", duration: 0, label: "" },
+      segmentElapsedMs: 0,
+      finished: true
+    };
+  }
 
   if (elapsedMs >= totalDurationMs) {
     const lastIndex = timeline.length - 1;
@@ -403,6 +436,14 @@ function getNextVideoInfo(fromIndex) {
     }
   }
 
+  if (workoutConfig?.loopBlocks) {
+    for (let i = 0; i < timeline.length; i += 1) {
+      if (timeline[i].kind === "dualVideo" || timeline[i].kind === "singleVideo") {
+        return { index: i, segment: timeline[i] };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -443,7 +484,7 @@ async function buildMediaRequest(info) {
               paths,
               contextKey: `preview:${index}:${paths.join("|")}`,
               seekSeconds: 0,
-              shouldPlay: !state.paused && !finished,
+              shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
               centerText: "UPCOMING\nMOVEMENTS",
               labelText: "BREAK",
               remain
@@ -462,7 +503,7 @@ async function buildMediaRequest(info) {
               paths: [path, ""],
               contextKey: `preview:${index}:${path}`,
               seekSeconds: 0,
-              shouldPlay: !state.paused && !finished,
+              shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
               centerText: "UPCOMING\nMOVEMENT",
               labelText: "BREAK",
               remain
@@ -490,7 +531,7 @@ async function buildMediaRequest(info) {
       paths: [path || "", ""],
       contextKey: `segment:${index}:${path || "missing"}`,
       seekSeconds: segmentElapsedMs / 1000,
-      shouldPlay: !state.paused && !finished,
+      shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
       centerText: url ? "" : "MISSING\nVIDEO",
       labelText: segment.label,
       remain
@@ -507,7 +548,7 @@ async function buildMediaRequest(info) {
       paths,
       contextKey: `segment:${index}:${paths.join("|")}`,
       seekSeconds: segmentElapsedMs / 1000,
-      shouldPlay: !state.paused && !finished,
+      shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
       centerText: (urls[0] || urls[1]) ? "" : "MISSING\nVIDEOS",
       labelText: segment.label,
       remain
@@ -664,7 +705,7 @@ async function render() {
   if (myToken !== renderToken) return;
 
   screenLabel.innerText = `SCREEN ${screenNumber}`;
-  label.innerText = request.labelText;
+  label.innerText = workoutConfig.loopBlocks ? `${request.labelText} / LOOP MODE` : request.labelText;
   timer.innerText = format(request.remain);
   center.innerText = request.centerText || "";
   center.style.display = request.centerText ? "block" : "none";
