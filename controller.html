@@ -4,8 +4,21 @@
 <meta charset="utf-8">
 <title>Controller</title>
 <style>
-body{font-family:Arial,sans-serif;padding:20px}
-button{margin:5px;padding:10px 14px;font-size:16px}
+body{
+  font-family:Arial,sans-serif;
+  padding:20px;
+  background:#111;
+  color:#fff;
+}
+button{
+  margin:5px;
+  padding:10px 14px;
+  font-size:16px;
+}
+#status{
+  margin-top:15px;
+  color:#bbb;
+}
 </style>
 </head>
 <body>
@@ -17,6 +30,8 @@ button{margin:5px;padding:10px 14px;font-size:16px}
 <button onclick="resetTimer()">Reset</button>
 <button onclick="prev()">Previous</button>
 <button onclick="next()">Next</button>
+
+<div id="status"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -32,8 +47,75 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const BLOCK_PATTERN = [45, 15, 45, 15, 45, 15, 60];
-const durations = [180, ...Array.from({ length: 6 }, () => BLOCK_PATTERN).flat(), 180];
+const statusEl = document.getElementById("status");
+
+let workoutConfig = null;
+
+function defaultWorkoutConfig() {
+  return {
+    warmupSeconds: 180,
+    cooldownSeconds: 180,
+    blocks: Array.from({ length: 6 }, () => ({
+      workSeconds: 45,
+      restSeconds: 15,
+      rounds: 3,
+      breakSeconds: 60
+    }))
+  };
+}
+
+function normalizeConfig(config) {
+  const base = defaultWorkoutConfig();
+  const incoming = config || {};
+
+  const normalized = {
+    ...base,
+    ...incoming,
+    blocks: []
+  };
+
+  for (let i = 0; i < 6; i += 1) {
+    const oldBlock = incoming.blocks?.[i];
+
+    if (Array.isArray(oldBlock)) {
+      normalized.blocks.push({ ...base.blocks[i] });
+    } else {
+      normalized.blocks.push({
+        ...base.blocks[i],
+        ...(oldBlock || {})
+      });
+    }
+  }
+
+  return normalized;
+}
+
+function buildDurations() {
+  const config = workoutConfig || defaultWorkoutConfig();
+  const durations = [];
+
+  durations.push(Number(config.warmupSeconds) || 180);
+
+  config.blocks.forEach(block => {
+    const rounds = Number(block.rounds) || 3;
+    const workSeconds = Number(block.workSeconds) || 45;
+    const restSeconds = Number(block.restSeconds) || 15;
+    const breakSeconds = Number(block.breakSeconds) || 60;
+
+    for (let i = 0; i < rounds; i += 1) {
+      durations.push(workSeconds);
+      durations.push(restSeconds);
+    }
+
+    if (breakSeconds > 0) {
+      durations.push(breakSeconds);
+    }
+  });
+
+  durations.push(Number(config.cooldownSeconds) || 180);
+
+  return durations;
+}
 
 function defaultState() {
   return {
@@ -50,7 +132,7 @@ function withState(callback) {
 }
 
 function totalDurationMs() {
-  return durations.reduce((sum, seconds) => sum + (seconds * 1000), 0);
+  return buildDurations().reduce((sum, seconds) => sum + (seconds * 1000), 0);
 }
 
 function clampElapsed(ms) {
@@ -66,6 +148,7 @@ function currentElapsedMs(state) {
 }
 
 function findSegmentIndex(elapsedMs) {
+  const durations = buildDurations();
   let cursor = 0;
 
   for (let i = 0; i < durations.length; i += 1) {
@@ -77,10 +160,13 @@ function findSegmentIndex(elapsedMs) {
 }
 
 function segmentStartMs(index) {
+  const durations = buildDurations();
   let cursor = 0;
+
   for (let i = 0; i < index; i += 1) {
     cursor += durations[i] * 1000;
   }
+
   return cursor;
 }
 
@@ -92,7 +178,9 @@ function seekTo(targetMs) {
       paused: state.paused
     };
 
-    if (state.paused) updates.elapsed = clamped;
+    if (state.paused) {
+      updates.elapsed = clamped;
+    }
 
     db.ref("state").update(updates);
   });
@@ -128,8 +216,10 @@ function resetTimer() {
 
 function next() {
   withState((state) => {
+    const durations = buildDurations();
     const elapsedMs = currentElapsedMs(state);
     const currentIndex = findSegmentIndex(elapsedMs);
+
     const targetMs = currentIndex >= durations.length - 1
       ? totalDurationMs()
       : segmentStartMs(currentIndex + 1);
@@ -142,6 +232,7 @@ function prev() {
   withState((state) => {
     const elapsedMs = currentElapsedMs(state);
     const currentIndex = findSegmentIndex(elapsedMs);
+
     const targetMs = currentIndex <= 0
       ? 0
       : segmentStartMs(currentIndex - 1);
@@ -149,6 +240,25 @@ function prev() {
     seekTo(targetMs);
   });
 }
+
+function format(totalSeconds) {
+  const safe = Math.max(0, totalSeconds);
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function updateStatus() {
+  const totalSeconds = Math.round(totalDurationMs() / 1000);
+  statusEl.innerText = `Loaded workout length: ${format(totalSeconds)}`;
+}
+
+db.ref("workoutConfig").on("value", snap => {
+  workoutConfig = normalizeConfig(snap.val());
+  updateStatus();
+});
+
+updateStatus();
 </script>
 
 </body>
