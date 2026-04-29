@@ -53,8 +53,13 @@ let workoutConfig = null;
 
 function defaultWorkoutConfig() {
   return {
+    includeWarmup: true,
+    includeCooldown: true,
+    loopBlocks: false,
+
     warmupSeconds: 180,
     cooldownSeconds: 180,
+
     blocks: Array.from({ length: 6 }, () => ({
       workSeconds: 45,
       restSeconds: 15,
@@ -71,6 +76,9 @@ function normalizeConfig(config) {
   const normalized = {
     ...base,
     ...incoming,
+    includeWarmup: incoming.includeWarmup !== undefined ? incoming.includeWarmup : base.includeWarmup,
+    includeCooldown: incoming.includeCooldown !== undefined ? incoming.includeCooldown : base.includeCooldown,
+    loopBlocks: incoming.loopBlocks !== undefined ? incoming.loopBlocks : base.loopBlocks,
     blocks: []
   };
 
@@ -94,7 +102,13 @@ function buildDurations() {
   const config = workoutConfig || defaultWorkoutConfig();
   const durations = [];
 
-  durations.push(Number(config.warmupSeconds) || 180);
+  /*
+    Loop mode is blocks-only mode.
+    It intentionally skips warmup and cooldown.
+  */
+  if (!config.loopBlocks && config.includeWarmup !== false) {
+    durations.push(Number(config.warmupSeconds) || 180);
+  }
 
   config.blocks.forEach(block => {
     const rounds = Number(block.rounds) || 3;
@@ -104,7 +118,10 @@ function buildDurations() {
 
     for (let i = 0; i < rounds; i += 1) {
       durations.push(workSeconds);
-      durations.push(restSeconds);
+
+      if (restSeconds > 0) {
+        durations.push(restSeconds);
+      }
     }
 
     if (breakSeconds > 0) {
@@ -112,7 +129,9 @@ function buildDurations() {
     }
   });
 
-  durations.push(Number(config.cooldownSeconds) || 180);
+  if (!config.loopBlocks && config.includeCooldown !== false) {
+    durations.push(Number(config.cooldownSeconds) || 180);
+  }
 
   return durations;
 }
@@ -136,7 +155,14 @@ function totalDurationMs() {
 }
 
 function clampElapsed(ms) {
-  return Math.max(0, Math.min(ms, totalDurationMs()));
+  const total = totalDurationMs();
+  const safeMs = Math.max(0, ms || 0);
+
+  if (workoutConfig?.loopBlocks && total > 0) {
+    return safeMs % total;
+  }
+
+  return Math.max(0, Math.min(safeMs, total));
 }
 
 function currentElapsedMs(state) {
@@ -188,9 +214,12 @@ function seekTo(targetMs) {
 
 function play() {
   withState((state) => {
+    const elapsed = clampElapsed(state.elapsed || 0);
+
     db.ref("state").update({
       paused: false,
-      startTime: Date.now() - (state.elapsed || 0)
+      startTime: Date.now() - elapsed,
+      elapsed
     });
   });
 }
@@ -220,9 +249,13 @@ function next() {
     const elapsedMs = currentElapsedMs(state);
     const currentIndex = findSegmentIndex(elapsedMs);
 
-    const targetMs = currentIndex >= durations.length - 1
-      ? totalDurationMs()
-      : segmentStartMs(currentIndex + 1);
+    let targetMs;
+
+    if (currentIndex >= durations.length - 1) {
+      targetMs = workoutConfig?.loopBlocks ? 0 : totalDurationMs();
+    } else {
+      targetMs = segmentStartMs(currentIndex + 1);
+    }
 
     seekTo(targetMs);
   });
@@ -230,12 +263,19 @@ function next() {
 
 function prev() {
   withState((state) => {
+    const durations = buildDurations();
     const elapsedMs = currentElapsedMs(state);
     const currentIndex = findSegmentIndex(elapsedMs);
 
-    const targetMs = currentIndex <= 0
-      ? 0
-      : segmentStartMs(currentIndex - 1);
+    let targetMs;
+
+    if (currentIndex <= 0) {
+      targetMs = workoutConfig?.loopBlocks
+        ? segmentStartMs(durations.length - 1)
+        : 0;
+    } else {
+      targetMs = segmentStartMs(currentIndex - 1);
+    }
 
     seekTo(targetMs);
   });
@@ -250,7 +290,12 @@ function format(totalSeconds) {
 
 function updateStatus() {
   const totalSeconds = Math.round(totalDurationMs() / 1000);
-  statusEl.innerText = `Loaded workout length: ${format(totalSeconds)}`;
+
+  if (workoutConfig?.loopBlocks) {
+    statusEl.innerText = `Loop mode loaded: ${format(totalSeconds)} per loop / repeats continuously`;
+  } else {
+    statusEl.innerText = `Loaded workout length: ${format(totalSeconds)}`;
+  }
 }
 
 db.ref("workoutConfig").on("value", snap => {
