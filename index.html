@@ -6,6 +6,7 @@
 <style>
 html,body{
   margin:0;
+  width:100%;
   height:100%;
   background:#000;
   color:#fff;
@@ -13,9 +14,29 @@ html,body{
   overflow:hidden;
 }
 
+/*
+  ROTATION MODE:
+  Windows / browser can stay landscape.
+  This rotated stage creates a portrait screen inside the landscape browser.
+
+  If the display is rotated the wrong direction, change rotate(90deg)
+  to rotate(-90deg) in #rotateStage.
+*/
+#rotateStage{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:100vh;
+  height:100vw;
+  transform:translate(-50%,-50%) rotate(90deg);
+  transform-origin:center center;
+  background:#000;
+  overflow:hidden;
+}
+
 /* FULL SCREEN VERTICAL APP SHELL */
 #appShell{
-  position:fixed;
+  position:absolute;
   inset:0;
   z-index:1;
   display:grid;
@@ -129,10 +150,8 @@ video{
 
 /* CENTER TEXT FOR REST / BREAK / LOADING */
 #center{
-  position:fixed;
-  top:50%;
-  left:50%;
-  transform:translate(-50%,-50%);
+  position:absolute;
+  inset:0;
   z-index:30;
   font-size:84px;
   line-height:1.1;
@@ -141,33 +160,38 @@ video{
   text-shadow:0 0 24px rgba(0,0,0,.65);
   display:none;
   font-weight:bold;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
 }
 </style>
 </head>
 <body>
 
-<div id="appShell" class="none">
-  <div id="topBar">
-    <div id="stationBadge"></div>
-    <div id="roundBadge"></div>
+<div id="rotateStage">
+  <div id="appShell" class="none">
+    <div id="topBar">
+      <div id="stationBadge"></div>
+      <div id="roundBadge"></div>
+    </div>
+
+    <div id="videoWrap1" class="videoWrap">
+      <video id="video1" muted playsinline preload="auto" loop></video>
+      <div id="videoName1" class="videoName"></div>
+    </div>
+
+    <div id="timerBar">
+      <div id="timer"></div>
+    </div>
+
+    <div id="videoWrap2" class="videoWrap">
+      <video id="video2" muted playsinline preload="auto" loop></video>
+      <div id="videoName2" class="videoName"></div>
+    </div>
   </div>
 
-  <div id="videoWrap1" class="videoWrap">
-    <video id="video1" muted playsinline preload="auto" loop></video>
-    <div id="videoName1" class="videoName"></div>
-  </div>
-
-  <div id="timerBar">
-    <div id="timer"></div>
-  </div>
-
-  <div id="videoWrap2" class="videoWrap">
-    <video id="video2" muted playsinline preload="auto" loop></video>
-    <div id="videoName2" class="videoName"></div>
-  </div>
+  <div id="center"></div>
 </div>
-
-<div id="center"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -749,7 +773,7 @@ async function render() {
     roundBadge.innerText = "";
     timer.innerText = "--:--";
     center.innerText = "LOADING\nWORKOUT";
-    center.style.display = "block";
+    center.style.display = "flex";
     appShell.className = "none";
     videos.forEach(video => video.pause());
     return;
@@ -764,7 +788,7 @@ async function render() {
   roundBadge.innerText = getDisplayLabel(request.segment, request.labelText);
   timer.innerText = format(request.remain);
   center.innerText = request.centerText || "";
-  center.style.display = request.centerText ? "block" : "none";
+  center.style.display = request.centerText ? "flex" : "none";
 
   setVideoLayout(request);
 
