@@ -15,9 +15,10 @@ html,body{
 }
 
 /*
-  Windows/browser can stay landscape.
+  The TV/computer can stay in normal landscape mode.
   The website rotates itself into portrait mode.
-  If the TV direction is wrong, change rotate(90deg) to rotate(-90deg).
+
+  You confirmed -90deg is correct.
 */
 #rotateStage{
   position:fixed;
@@ -27,7 +28,9 @@ html,body{
   height:100vw;
   transform:translate(-50%,-50%) rotate(-90deg);
   transform-origin:center center;
-  background:#000;
+  background:
+    linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.25)),
+    url("./ChatGPT Image May 1, 2026, 02_05_25 AM.png") center center / cover no-repeat;
   overflow:hidden;
 }
 
@@ -37,7 +40,7 @@ html,body{
   z-index:1;
   display:grid;
   grid-template-rows:110px 1fr 160px 1fr;
-  background:#000;
+  background:transparent;
 }
 
 #topBar{
@@ -45,9 +48,10 @@ html,body{
   align-items:center;
   justify-content:space-between;
   padding:0 30px;
-  background:rgba(0,0,0,.9);
-  border-bottom:3px solid rgba(255,255,255,.25);
+  background:rgba(0,0,0,.68);
+  border-bottom:3px solid rgba(255,255,255,.18);
   z-index:20;
+  backdrop-filter:blur(2px);
 }
 
 #stationBadge{
@@ -68,7 +72,7 @@ html,body{
   position:relative;
   width:100%;
   height:100%;
-  background:#000;
+  background:transparent;
   overflow:hidden;
 }
 
@@ -76,7 +80,7 @@ video{
   width:100%;
   height:100%;
   object-fit:contain;
-  background:#000;
+  background:transparent;
 }
 
 .videoName{
@@ -86,8 +90,8 @@ video{
   transform:translateX(-50%);
   z-index:10;
   padding:12px 22px;
-  background:rgba(0,0,0,.72);
-  border:1px solid rgba(255,255,255,.25);
+  background:rgba(0,0,0,.68);
+  border:1px solid rgba(255,255,255,.22);
   border-radius:10px;
   font-size:34px;
   font-weight:bold;
@@ -97,16 +101,18 @@ video{
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+  text-shadow:0 0 14px rgba(0,0,0,.8);
 }
 
 #timerBar{
   display:flex;
   align-items:center;
   justify-content:center;
-  background:rgba(0,0,0,.95);
-  border-top:3px solid rgba(255,255,255,.25);
-  border-bottom:3px solid rgba(255,255,255,.25);
+  background:rgba(0,0,0,.78);
+  border-top:3px solid rgba(255,255,255,.18);
+  border-bottom:3px solid rgba(255,255,255,.18);
   z-index:25;
+  backdrop-filter:blur(2px);
 }
 
 #timer{
@@ -114,6 +120,7 @@ video{
   line-height:1;
   font-weight:bold;
   letter-spacing:2px;
+  text-shadow:0 0 24px rgba(0,0,0,.85);
 }
 
 #appShell.single{
@@ -138,6 +145,10 @@ video{
   display:none;
 }
 
+/*
+  Center overlay for REST / BREAK / LOADING / MISSING VIDEO.
+  This sits over the branded background.
+*/
 #center{
   position:absolute;
   inset:0;
@@ -146,11 +157,36 @@ video{
   line-height:1.1;
   text-align:center;
   white-space:pre-line;
-  text-shadow:0 0 24px rgba(0,0,0,.65);
+  text-shadow:0 0 28px rgba(0,0,0,.95);
   display:none;
   font-weight:bold;
   align-items:center;
   justify-content:center;
+  pointer-events:none;
+  color:#fff;
+  padding:40px;
+}
+
+/*
+  Small label used specifically for upcoming previews.
+  This prevents UPCOMING MOVEMENTS from overlapping the timer/top labels.
+*/
+#upcomingLabel{
+  position:absolute;
+  left:50%;
+  top:132px;
+  transform:translateX(-50%);
+  z-index:35;
+  display:none;
+  padding:10px 20px;
+  background:rgba(0,0,0,.7);
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:10px;
+  font-size:34px;
+  font-weight:bold;
+  letter-spacing:1px;
+  text-align:center;
+  text-shadow:0 0 18px rgba(0,0,0,.9);
   pointer-events:none;
 }
 </style>
@@ -180,6 +216,7 @@ video{
   </div>
 
   <div id="center"></div>
+  <div id="upcomingLabel">UPCOMING MOVEMENTS</div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -222,6 +259,7 @@ const stationBadge = document.getElementById("stationBadge");
 const roundBadge = document.getElementById("roundBadge");
 const timer = document.getElementById("timer");
 const center = document.getElementById("center");
+const upcomingLabel = document.getElementById("upcomingLabel");
 
 let state = { startTime: Date.now(), paused: true, elapsed: 0 };
 let workoutConfig = null;
@@ -574,19 +612,24 @@ function getNextVideoInfo(fromIndex) {
   return null;
 }
 
-function getDisplayLabel(segment, requestLabel) {
+function getDisplayLabel(segment, requestLabel, isUpcoming) {
   if (!segment) return "";
+
+  if (requestLabel === "BREAK" || requestLabel === "REST") {
+    return requestLabel;
+  }
+
+  if (isUpcoming) {
+    return "NEXT";
+  }
 
   if (segment.kind === "dualVideo") {
     const blockText = `BLOCK ${segment.blockIndex + 1}`;
     const roundText = `ROUND ${segment.roundIndex}/${segment.rounds}`;
+
     return workoutConfig?.loopBlocks
       ? `${blockText}\n${roundText}\nLOOP`
       : `${blockText}\n${roundText}`;
-  }
-
-  if (requestLabel === "BREAK" || requestLabel === "REST") {
-    return requestLabel;
   }
 
   return workoutConfig?.loopBlocks ? `${requestLabel}\nLOOP` : requestLabel;
@@ -600,6 +643,7 @@ async function buildMediaRequest(info) {
     return {
       mode: "none",
       centerText: "REST",
+      upcoming: false,
       labelText: "REST",
       segment,
       remain
@@ -625,7 +669,8 @@ async function buildMediaRequest(info) {
               contextKey: `preview:${index}:${resolved.map(r => r?.key).join("|")}`,
               seekSeconds: 0,
               shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
-              centerText: "UPCOMING\nMOVEMENTS",
+              centerText: "",
+              upcoming: true,
               labelText: "BREAK",
               segment,
               remain
@@ -645,7 +690,8 @@ async function buildMediaRequest(info) {
               contextKey: `preview:${index}:${resolved.key}`,
               seekSeconds: 0,
               shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
-              centerText: "UPCOMING\nMOVEMENT",
+              centerText: "",
+              upcoming: true,
               labelText: "BREAK",
               segment,
               remain
@@ -658,6 +704,7 @@ async function buildMediaRequest(info) {
     return {
       mode: "none",
       centerText: "BREAK",
+      upcoming: false,
       labelText: "BREAK",
       segment,
       remain
@@ -676,6 +723,7 @@ async function buildMediaRequest(info) {
       seekSeconds: segmentElapsedMs / 1000,
       shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
       centerText: resolved.url ? "" : "MISSING\nVIDEO",
+      upcoming: false,
       labelText: segment.label,
       segment,
       remain
@@ -694,6 +742,7 @@ async function buildMediaRequest(info) {
       seekSeconds: segmentElapsedMs / 1000,
       shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
       centerText: (resolved[0]?.url || resolved[1]?.url) ? "" : "MISSING\nVIDEOS",
+      upcoming: false,
       labelText: segment.label,
       segment,
       remain
@@ -703,6 +752,7 @@ async function buildMediaRequest(info) {
   return {
     mode: "none",
     centerText: "",
+    upcoming: false,
     labelText: "",
     segment,
     remain
@@ -839,6 +889,7 @@ async function render() {
     timer.innerText = "--:--";
     center.innerText = "LOADING\nWORKOUT";
     center.style.display = "flex";
+    upcomingLabel.style.display = "none";
     appShell.className = "none";
     videos.forEach(video => video.pause());
     return;
@@ -850,10 +901,13 @@ async function render() {
   if (myToken !== renderToken) return;
 
   stationBadge.innerText = `STATION ${screenNumber}`;
-  roundBadge.innerText = getDisplayLabel(request.segment, request.labelText);
+  roundBadge.innerText = getDisplayLabel(request.segment, request.labelText, request.upcoming);
   timer.innerText = format(request.remain);
+
   center.innerText = request.centerText || "";
   center.style.display = request.centerText ? "flex" : "none";
+
+  upcomingLabel.style.display = request.upcoming ? "block" : "none";
 
   setVideoLayout(request);
 
