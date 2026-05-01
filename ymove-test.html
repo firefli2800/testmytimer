@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>YMove Full Library Test</title>
+<title>YMove Browser Test</title>
 <style>
 :root{
   --bg:#0d0d0d;
@@ -20,7 +20,7 @@ body{
   background:var(--bg);
   color:var(--text);
   padding:24px;
-  max-width:1300px;
+  max-width:1350px;
   margin:0 auto;
 }
 
@@ -86,6 +86,19 @@ button.danger{
   background:#341111;
   color:#fff;
   border:1px solid #8a3333;
+}
+
+button.filter{
+  background:#202020;
+  color:#fff;
+  border:1px solid #555;
+  padding:9px 12px;
+  font-size:14px;
+}
+
+button.filter.active{
+  background:#fff;
+  color:#000;
 }
 
 button:disabled{
@@ -216,18 +229,57 @@ pre{
   margin-bottom:8px;
 }
 
+.filterGroup{
+  margin-top:14px;
+}
+
+.filterButtons{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+
+.summaryCards{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(120px,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+
+.summaryCard{
+  background:#101010;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:12px;
+}
+
+.summaryNumber{
+  font-size:24px;
+  font-weight:bold;
+}
+
+.summaryLabel{
+  color:#aaa;
+  font-size:12px;
+}
+
 @media(max-width:900px){
   .layout{
     grid-template-columns:1fr;
+  }
+
+  .summaryCards{
+    grid-template-columns:1fr 1fr;
   }
 }
 </style>
 </head>
 <body>
 
-<h1>YMove Full Library Test</h1>
+<h1>YMove Browser Test</h1>
 <p>
-  Temporary test page. This lets you search, preview, select Action A/B, or load the full YMove library.
+  This tests the future builder module: browse by muscle group, browse by exercise type, preview videos, and select Action A/B.
 </p>
 
 <div class="panel">
@@ -276,23 +328,42 @@ pre{
     </div>
 
     <div class="field">
-      <label for="muscleFilter">Muscle</label>
-      <input id="muscleFilter" placeholder="biceps, legs, chest...">
-    </div>
-
-    <div class="field">
       <label>&nbsp;</label>
       <button onclick="newSearch()">Search</button>
     </div>
 
     <div class="field">
       <label>&nbsp;</label>
-      <button class="secondary" onclick="loadFullLibrary()">Load Full Library</button>
+      <button class="danger" onclick="resetFilters()">Reset Filters</button>
     </div>
+  </div>
 
-    <div class="field">
-      <label>&nbsp;</label>
-      <button class="danger" onclick="clearResults()">Clear Results</button>
+  <div class="filterGroup">
+    <h3>Browse by Muscle Group</h3>
+    <div id="muscleButtons" class="filterButtons"></div>
+  </div>
+
+  <div class="filterGroup">
+    <h3>Browse by Exercise Type</h3>
+    <div id="typeButtons" class="filterButtons"></div>
+  </div>
+
+  <div class="summaryCards">
+    <div class="summaryCard">
+      <div id="shownCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Shown</div>
+    </div>
+    <div class="summaryCard">
+      <div id="rawCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Raw Returned</div>
+    </div>
+    <div class="summaryCard">
+      <div id="activeMuscle" class="summaryNumber">-</div>
+      <div class="summaryLabel">Muscle</div>
+    </div>
+    <div class="summaryCard">
+      <div id="activeType" class="summaryNumber">-</div>
+      <div class="summaryLabel">Type</div>
     </div>
   </div>
 
@@ -304,10 +375,6 @@ pre{
     <div class="panel">
       <h2>Results</h2>
       <div id="results" class="resultsGrid"></div>
-
-      <button id="loadMoreBtn" class="secondary" onclick="loadMore()" style="display:none;margin-top:16px;">
-        Load More
-      </button>
     </div>
   </div>
 
@@ -355,14 +422,45 @@ const functions = firebase.app().functions("us-central1");
 const searchYMoveExercises = functions.httpsCallable("searchYMoveExercises");
 const getYMoveExercise = functions.httpsCallable("getYMoveExercise");
 
+const MUSCLE_GROUPS = [
+  "chest",
+  "back",
+  "shoulders",
+  "biceps",
+  "triceps",
+  "forearms",
+  "quads",
+  "hamstrings",
+  "glutes",
+  "calves",
+  "core",
+  "full_body"
+];
+
+const EXERCISE_TYPES = [
+  "strength",
+  "yoga",
+  "stretching",
+  "cardio",
+  "plyometric",
+  "calisthenics",
+  "warmup",
+  "cooldown",
+  "balance",
+  "mobility",
+  "isometric",
+  "rehabilitation",
+  "functional",
+  "core",
+  "hiit"
+];
+
 const searchBox = document.getElementById("searchBox");
 const difficultyFilter = document.getElementById("difficultyFilter");
 const equipmentFilter = document.getElementById("equipmentFilter");
-const muscleFilter = document.getElementById("muscleFilter");
 
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
-const loadMoreBtn = document.getElementById("loadMoreBtn");
 
 const selectedNameEl = document.getElementById("selectedName");
 const previewVideo = document.getElementById("previewVideo");
@@ -378,21 +476,27 @@ const slotBName = document.getElementById("slotBName");
 const slotAMeta = document.getElementById("slotAMeta");
 const slotBMeta = document.getElementById("slotBMeta");
 
+const muscleButtons = document.getElementById("muscleButtons");
+const typeButtons = document.getElementById("typeButtons");
+
+const shownCountEl = document.getElementById("shownCount");
+const rawCountEl = document.getElementById("rawCount");
+const activeMuscleEl = document.getElementById("activeMuscle");
+const activeTypeEl = document.getElementById("activeType");
+
 let activeSlot = "A";
 let selectedSlots = {
   A: null,
   B: null
 };
 
-let currentPage = 1;
-let currentOffset = 0;
-let lastResultCount = 0;
-
-const PAGE_SIZE = 50;
-const MAX_FULL_LIBRARY_PAGES = 30;
+let selectedMuscleGroup = "";
+let selectedExerciseType = "";
 
 let allLoadedExercises = [];
 let seenExerciseKeys = new Set();
+
+const PAGE_SIZE = 50;
 
 function setActiveSlot(slot) {
   activeSlot = slot;
@@ -405,16 +509,6 @@ function clearSlot(event, slot) {
   selectedSlots[slot] = null;
   renderSlots();
   renderSavedObject();
-}
-
-function clearResults() {
-  resultsEl.innerHTML = "";
-  allLoadedExercises = [];
-  seenExerciseKeys = new Set();
-  currentPage = 1;
-  currentOffset = 0;
-  loadMoreBtn.style.display = "none";
-  statusEl.textContent = "Results cleared.";
 }
 
 function showDebug(label, value) {
@@ -458,6 +552,7 @@ function getExerciseMeta(exercise) {
   if (exercise.muscleGroup) parts.push(exercise.muscleGroup);
   if (exercise.equipment) parts.push(exercise.equipment);
   if (exercise.difficulty) parts.push(exercise.difficulty);
+  if (exercise.exerciseType) parts.push(exercise.exerciseType);
 
   return parts.filter(Boolean).join(" • ");
 }
@@ -508,6 +603,7 @@ function makeBuilderItem(exercise) {
       muscleGroup: exercise.muscleGroup || "",
       equipment: exercise.equipment || "",
       difficulty: exercise.difficulty || "",
+      exerciseType: exercise.exerciseType || "",
       slug: exercise.slug || ""
     }
   };
@@ -520,7 +616,8 @@ function renderSlots() {
       selectedSlots.A.meta.category,
       selectedSlots.A.meta.muscleGroup,
       selectedSlots.A.meta.equipment,
-      selectedSlots.A.meta.difficulty
+      selectedSlots.A.meta.difficulty,
+      selectedSlots.A.meta.exerciseType
     ].filter(Boolean).join(" • ") || "YMove exercise";
   } else {
     slotAName.textContent = "Nothing selected";
@@ -533,7 +630,8 @@ function renderSlots() {
       selectedSlots.B.meta.category,
       selectedSlots.B.meta.muscleGroup,
       selectedSlots.B.meta.equipment,
-      selectedSlots.B.meta.difficulty
+      selectedSlots.B.meta.difficulty,
+      selectedSlots.B.meta.exerciseType
     ].filter(Boolean).join(" • ") || "YMove exercise";
   } else {
     slotBName.textContent = "Nothing selected";
@@ -566,6 +664,54 @@ function addExercisesToMemory(exercises) {
   return newExercises;
 }
 
+function renderFilterButtons() {
+  muscleButtons.innerHTML = "";
+
+  const allMuscleButton = document.createElement("button");
+  allMuscleButton.className = `filter ${selectedMuscleGroup === "" ? "active" : ""}`;
+  allMuscleButton.textContent = "Any";
+  allMuscleButton.onclick = () => browseMuscle("");
+  muscleButtons.appendChild(allMuscleButton);
+
+  MUSCLE_GROUPS.forEach(group => {
+    const button = document.createElement("button");
+    button.className = `filter ${selectedMuscleGroup === group ? "active" : ""}`;
+    button.textContent = group.replace("_", " ");
+    button.onclick = () => browseMuscle(group);
+    muscleButtons.appendChild(button);
+  });
+
+  typeButtons.innerHTML = "";
+
+  const allTypeButton = document.createElement("button");
+  allTypeButton.className = `filter ${selectedExerciseType === "" ? "active" : ""}`;
+  allTypeButton.textContent = "Any";
+  allTypeButton.onclick = () => browseType("");
+  typeButtons.appendChild(allTypeButton);
+
+  EXERCISE_TYPES.forEach(type => {
+    const button = document.createElement("button");
+    button.className = `filter ${selectedExerciseType === type ? "active" : ""}`;
+    button.textContent = type;
+    button.onclick = () => browseType(type);
+    typeButtons.appendChild(button);
+  });
+}
+
+function updateSummary(rawCount = 0) {
+  shownCountEl.textContent = String(allLoadedExercises.length);
+  rawCountEl.textContent = String(rawCount);
+  activeMuscleEl.textContent = selectedMuscleGroup || "-";
+  activeTypeEl.textContent = selectedExerciseType || "-";
+}
+
+function clearResults() {
+  resultsEl.innerHTML = "";
+  allLoadedExercises = [];
+  seenExerciseKeys = new Set();
+  updateSummary(0);
+}
+
 function renderResults(exercises, append = false) {
   if (!append) {
     resultsEl.innerHTML = "";
@@ -583,7 +729,8 @@ function renderResults(exercises, append = false) {
       exercise.category,
       exercise.muscleGroup,
       exercise.equipment,
-      exercise.difficulty
+      exercise.difficulty,
+      exercise.exerciseType
     ].filter(Boolean).map(item => `<span class="badge">${item}</span>`).join("");
 
     div.innerHTML = `
@@ -629,112 +776,49 @@ function chooseExercise(slot, exercise) {
   renderSavedObject();
 }
 
+function browseMuscle(group) {
+  selectedMuscleGroup = group;
+  renderFilterButtons();
+  newSearch();
+}
+
+function browseType(type) {
+  selectedExerciseType = type;
+  renderFilterButtons();
+  newSearch();
+}
+
+function resetFilters() {
+  searchBox.value = "";
+  difficultyFilter.value = "";
+  equipmentFilter.value = "";
+  selectedMuscleGroup = "";
+  selectedExerciseType = "";
+  renderFilterButtons();
+  clearResults();
+  statusEl.textContent = "Filters reset.";
+}
+
 function getSearchPayload() {
   return {
     q: searchBox.value.trim(),
     limit: PAGE_SIZE,
-    page: currentPage,
-    offset: currentOffset,
     difficulty: difficultyFilter.value.trim(),
     equipment: equipmentFilter.value.trim(),
-    muscleGroup: muscleFilter.value.trim(),
+    muscleGroup: selectedMuscleGroup,
+    exerciseType: selectedExerciseType,
     hasVideo: true
   };
 }
 
 async function newSearch() {
-  currentPage = 1;
-  currentOffset = 0;
-  allLoadedExercises = [];
-  seenExerciseKeys = new Set();
-  await runSearch(false);
-}
-
-async function loadMore() {
-  currentPage += 1;
-  currentOffset += PAGE_SIZE;
-  await runSearch(true);
-}
-
-async function loadFullLibrary() {
   clearResults();
 
-  searchBox.value = "";
-  difficultyFilter.value = "";
-  equipmentFilter.value = "";
-  muscleFilter.value = "";
+  statusEl.textContent = "Searching...";
 
-  statusEl.textContent = "Loading full YMove library...";
-  loadMoreBtn.style.display = "none";
-
-  let totalNew = 0;
-  let emptyOrDuplicatePages = 0;
-
-  for (let page = 1; page <= MAX_FULL_LIBRARY_PAGES; page += 1) {
-    currentPage = page;
-    currentOffset = (page - 1) * PAGE_SIZE;
-
-    statusEl.textContent = `Loading full library... page ${page}, loaded ${allLoadedExercises.length} unique exercises so far.`;
-
-    try {
-      const response = await searchYMoveExercises({
-        q: "",
-        limit: PAGE_SIZE,
-        page: currentPage,
-        offset: currentOffset,
-        hasVideo: true
-      });
-
-      const exercises = getExerciseArray(response.data);
-      showDebug(`Full library page ${page} response:`, response.data);
-
-      if (!exercises.length) {
-        break;
-      }
-
-      const newExercises = addExercisesToMemory(exercises);
-      totalNew += newExercises.length;
-
-      if (newExercises.length === 0) {
-        emptyOrDuplicatePages += 1;
-      } else {
-        emptyOrDuplicatePages = 0;
-        renderResults(newExercises, true);
-      }
-
-      if (exercises.length < PAGE_SIZE) {
-        break;
-      }
-
-      if (emptyOrDuplicatePages >= 2) {
-        statusEl.textContent = "Stopped because YMove returned duplicate pages.";
-        break;
-      }
-
-    } catch (error) {
-      console.error(error);
-      showDebug("Full library load error:", error);
-      statusEl.textContent = "Error loading full library: " + error.message;
-      return;
-    }
-  }
-
-  statusEl.textContent = `Full library loaded: ${allLoadedExercises.length} unique exercises shown.`;
-}
-
-async function runSearch(append) {
-  statusEl.textContent = append ? "Loading more..." : "Searching...";
-
-  if (!append) {
-    resultsEl.innerHTML = "";
-    allLoadedExercises = [];
-    seenExerciseKeys = new Set();
-    previewVideo.removeAttribute("src");
-    selectedNameEl.textContent = "No preview selected";
-    previewMeta.textContent = "";
-  }
-
-  loadMoreBtn.style.display = "none";
+  previewVideo.removeAttribute("src");
+  selectedNameEl.textContent = "No preview selected";
+  previewMeta.textContent = "";
 
   try {
     const payload = getSearchPayload();
@@ -745,27 +829,16 @@ async function runSearch(append) {
     const exercises = getExerciseArray(response.data);
     const newExercises = addExercisesToMemory(exercises);
 
-    lastResultCount = exercises.length;
-
-    if (!newExercises.length && !append) {
-      statusEl.textContent = "No new exercises found.";
+    if (!newExercises.length) {
+      statusEl.textContent = "No exercises found for this filter/search.";
+      updateSummary(exercises.length);
       return;
     }
 
-    if (!newExercises.length && append) {
-      statusEl.textContent = "No more new results found.";
-      return;
-    }
+    renderResults(newExercises, false);
+    updateSummary(exercises.length);
 
-    renderResults(newExercises, append);
-
-    statusEl.textContent = append
-      ? `Loaded ${newExercises.length} more new exercises. Total shown: ${allLoadedExercises.length}.`
-      : `Found ${newExercises.length} exercises.`;
-
-    if (exercises.length >= PAGE_SIZE) {
-      loadMoreBtn.style.display = "inline-block";
-    }
+    statusEl.textContent = `Showing ${newExercises.length} exercises.`;
 
   } catch (error) {
     console.error(error);
@@ -822,8 +895,10 @@ searchBox.addEventListener("keydown", (event) => {
   }
 });
 
+renderFilterButtons();
 renderSlots();
 renderSavedObject();
+updateSummary(0);
 </script>
 
 </body>
