@@ -78,7 +78,7 @@ pre{
 <body>
 
 <h1>YMove Test</h1>
-<p>Temporary test page. This is only for confirming YMove search and video playback through Firebase Functions.</p>
+<p>Temporary test page. This confirms YMove search and video playback through Firebase Functions.</p>
 
 <div class="panel">
   <input id="searchBox" placeholder="Search exercise, example: squat" value="squat">
@@ -132,8 +132,17 @@ function showDebug(label, value) {
   debugBox.textContent = label + "\n\n" + JSON.stringify(value, null, 2);
 }
 
+function unwrapApiData(apiResponse) {
+  if (!apiResponse) return apiResponse;
+
+  // Firebase callable response gives us response.data.
+  // YMove also wraps its response inside data.
+  // So sometimes the actual object is response.data.data.
+  return apiResponse.data || apiResponse;
+}
+
 function getExerciseArray(apiResponse) {
-  const data = apiResponse || {};
+  const data = unwrapApiData(apiResponse) || {};
 
   if (Array.isArray(data)) return data;
   if (Array.isArray(data.exercises)) return data.exercises;
@@ -156,28 +165,37 @@ function getExerciseName(exercise) {
 function getVideoUrl(exercise) {
   if (!exercise) return "";
 
+  // Prefer portrait / primary videos for the vertical screen system.
+  if (Array.isArray(exercise.videos) && exercise.videos.length) {
+    const portraitPrimary = exercise.videos.find(video =>
+      video.orientation === "portrait" && video.isPrimary && video.videoUrl
+    );
+
+    if (portraitPrimary) return portraitPrimary.videoUrl;
+
+    const portrait = exercise.videos.find(video =>
+      video.orientation === "portrait" && video.videoUrl
+    );
+
+    if (portrait) return portrait.videoUrl;
+
+    const primary = exercise.videos.find(video =>
+      video.isPrimary && video.videoUrl
+    );
+
+    if (primary) return primary.videoUrl;
+
+    const firstWithUrl = exercise.videos.find(video => video.videoUrl);
+
+    if (firstWithUrl) return firstWithUrl.videoUrl;
+  }
+
+  // Fallbacks.
   if (typeof exercise.videoUrl === "string") return exercise.videoUrl;
   if (typeof exercise.video_url === "string") return exercise.video_url;
   if (typeof exercise.videoHlsUrl === "string") return exercise.videoHlsUrl;
   if (typeof exercise.video_hls_url === "string") return exercise.video_hls_url;
   if (typeof exercise.video === "string") return exercise.video;
-  if (typeof exercise.url === "string" && exercise.url.includes(".mp4")) return exercise.url;
-
-  if (Array.isArray(exercise.videos) && exercise.videos.length) {
-    const first = exercise.videos[0];
-    if (typeof first === "string") return first;
-    return first.videoUrl || first.url || first.src || first.hlsUrl || "";
-  }
-
-  if (exercise.videos && typeof exercise.videos === "object") {
-    return exercise.videos.mp4 ||
-           exercise.videos.videoUrl ||
-           exercise.videos.url ||
-           exercise.videos.hls ||
-           exercise.videos.hlsUrl ||
-           exercise.videos["720p"] ||
-           "";
-  }
 
   return "";
 }
@@ -248,9 +266,14 @@ async function previewExercise(id, name) {
 
   try {
     const response = await getYMoveExercise({ id });
-    const exercise = response.data;
 
-    showDebug("Exercise detail response:", exercise);
+    // This is the important fix:
+    // response.data is the Firebase callable response body.
+    // response.data.data is the actual YMove exercise.
+    const exerciseResponse = response.data;
+    const exercise = unwrapApiData(exerciseResponse);
+
+    showDebug("Exercise detail response:", exerciseResponse);
 
     const videoUrl = getVideoUrl(exercise);
 
