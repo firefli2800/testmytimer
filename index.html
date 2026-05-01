@@ -15,12 +15,9 @@ html,body{
 }
 
 /*
-  ROTATION MODE:
-  Windows / browser can stay landscape.
-  This rotated stage creates a portrait screen inside the landscape browser.
-
-  If the display is rotated the wrong direction, change rotate(-90deg)
-  to rotate(90deg) in #rotateStage.
+  Windows/browser can stay landscape.
+  The website rotates itself into portrait mode.
+  If the TV direction is wrong, change rotate(90deg) to rotate(-90deg).
 */
 #rotateStage{
   position:fixed;
@@ -28,23 +25,21 @@ html,body{
   left:50%;
   width:100vh;
   height:100vw;
-  transform:translate(-50%,-50%) rotate(-90deg);
+  transform:translate(-50%,-50%) rotate(90deg);
   transform-origin:center center;
   background:#000;
   overflow:hidden;
 }
 
-/* FULL SCREEN VERTICAL APP SHELL */
 #appShell{
   position:absolute;
   inset:0;
   z-index:1;
   display:grid;
-  grid-template-rows: 110px 1fr 160px 1fr;
+  grid-template-rows:110px 1fr 160px 1fr;
   background:#000;
 }
 
-/* TOP INFO BAR */
 #topBar{
   display:flex;
   align-items:center;
@@ -69,7 +64,6 @@ html,body{
   white-space:pre-line;
 }
 
-/* VIDEO SECTIONS */
 .videoWrap{
   position:relative;
   width:100%;
@@ -105,7 +99,6 @@ video{
   text-overflow:ellipsis;
 }
 
-/* CENTER TIMER BAR */
 #timerBar{
   display:flex;
   align-items:center;
@@ -123,9 +116,8 @@ video{
   letter-spacing:2px;
 }
 
-/* SINGLE VIDEO MODE */
 #appShell.single{
-  grid-template-rows: 110px 1fr 160px;
+  grid-template-rows:110px 1fr 160px;
 }
 
 #appShell.single #videoWrap1{
@@ -136,19 +128,16 @@ video{
   display:none;
 }
 
-/* DUAL VIDEO MODE */
 #appShell.dual #videoWrap1,
 #appShell.dual #videoWrap2{
   display:block;
 }
 
-/* NONE MODE / REST / BREAK */
 #appShell.none #videoWrap1,
 #appShell.none #videoWrap2{
   display:none;
 }
 
-/* CENTER TEXT FOR REST / BREAK / LOADING */
 #center{
   position:absolute;
   inset:0;
@@ -196,6 +185,7 @@ video{
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js"></script>
 
 <script>
 const firebaseConfig = {
@@ -207,8 +197,11 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+
 const db = firebase.database();
 const storage = firebase.storage();
+const functions = firebase.app().functions("us-central1");
+const resolveYMoveVideo = functions.httpsCallable("resolveYMoveVideo");
 
 const params = new URLSearchParams(window.location.search);
 const requestedScreen = parseInt(params.get("screen"), 10);
@@ -237,32 +230,71 @@ let activeSources = ["", ""];
 let activeContextKeys = ["", ""];
 let pendingLoadIds = [0, 0];
 
-const urlCache = {};
+const firebaseUrlCache = {};
+const ymoveUrlCache = {};
 let renderToken = 0;
+
+function emptyAction() {
+  return {
+    source: "firebase",
+    path: "",
+    name: ""
+  };
+}
 
 function defaultWorkoutConfig() {
   return {
     includeWarmup: true,
     includeCooldown: true,
     loopBlocks: false,
-
     warmupSeconds: 180,
     cooldownSeconds: 180,
     warmupPath: "",
     cooldownPath: "",
-
     blocks: Array.from({ length: 6 }, () => ({
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
-      includeBreak: true,
       breakSeconds: 60,
       stations: [
-        ["", ""],
-        ["", ""],
-        ["", ""]
+        [emptyAction(), emptyAction()],
+        [emptyAction(), emptyAction()],
+        [emptyAction(), emptyAction()]
       ]
     }))
+  };
+}
+
+function cleanName(value) {
+  if (!value) return "";
+  const fileName = String(value).split("/").pop() || value;
+  return decodeURIComponent(fileName).replace(/\.[^/.]+$/, "");
+}
+
+function normalizeAction(value) {
+  if (!value) return emptyAction();
+
+  if (typeof value === "string") {
+    return {
+      source: "firebase",
+      path: value,
+      name: cleanName(value)
+    };
+  }
+
+  if (value.source === "ymove") {
+    return {
+      source: "ymove",
+      exerciseId: value.exerciseId || "",
+      name: value.name || "YMove Exercise",
+      meta: value.meta || {}
+    };
+  }
+
+  return {
+    source: "firebase",
+    path: value.path || "",
+    name: value.name || cleanName(value.path || "")
   };
 }
 
@@ -286,63 +318,56 @@ function normalizeConfig(config) {
       normalized.blocks.push({
         ...base.blocks[i],
         stations: [
-          [oldBlock[0] || "", ""],
-          [oldBlock[1] || "", ""],
-          [oldBlock[2] || "", ""]
+          [normalizeAction(oldBlock[0]), emptyAction()],
+          [normalizeAction(oldBlock[1]), emptyAction()],
+          [normalizeAction(oldBlock[2]), emptyAction()]
         ]
       });
     } else {
-      normalized.blocks.push({
+      const block = {
         ...base.blocks[i],
         ...(oldBlock || {}),
-        stations: [
-          [
-            oldBlock?.stations?.[0]?.[0] || "",
-            oldBlock?.stations?.[0]?.[1] || ""
-          ],
-          [
-            oldBlock?.stations?.[1]?.[0] || "",
-            oldBlock?.stations?.[1]?.[1] || ""
-          ],
-          [
-            oldBlock?.stations?.[2]?.[0] || "",
-            oldBlock?.stations?.[2]?.[1] || ""
-          ]
-        ]
-      });
+        stations: []
+      };
+
+      for (let station = 0; station < 3; station += 1) {
+        const stationValue = oldBlock?.stations?.[station];
+
+        if (Array.isArray(stationValue)) {
+          block.stations.push([
+            normalizeAction(stationValue[0]),
+            normalizeAction(stationValue[1])
+          ]);
+        } else {
+          block.stations.push([emptyAction(), emptyAction()]);
+        }
+      }
+
+      normalized.blocks.push(block);
     }
   }
 
   return normalized;
 }
 
-function getNumberOrDefault(value, fallback) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : fallback;
-}
-
 function buildTimeline() {
   const config = workoutConfig || defaultWorkoutConfig();
   const segments = [];
 
-  /*
-    If loopBlocks is ON, this becomes endless circuit mode.
-    In that mode, warmup and cooldown are intentionally skipped.
-  */
   if (!config.loopBlocks && config.includeWarmup !== false) {
     segments.push({
       kind: "singleVideo",
-      duration: getNumberOrDefault(config.warmupSeconds, 180),
+      duration: Number(config.warmupSeconds) || 180,
       label: "WARMUP",
-      directVideoConfigKey: "warmupPath"
+      item: normalizeAction(config.warmupPath || "")
     });
   }
 
   config.blocks.forEach((block, blockIndex) => {
-    const rounds = getNumberOrDefault(block.rounds, 3);
-    const workSeconds = getNumberOrDefault(block.workSeconds, 45);
-    const restSeconds = getNumberOrDefault(block.restSeconds, 15);
-    const breakSeconds = getNumberOrDefault(block.breakSeconds, 60);
+    const rounds = Number(block.rounds) || 3;
+    const workSeconds = Number(block.workSeconds) || 45;
+    const restSeconds = Number(block.restSeconds) || 15;
+    const breakSeconds = Number(block.breakSeconds) || 60;
 
     for (let roundIndex = 1; roundIndex <= rounds; roundIndex += 1) {
       segments.push({
@@ -379,9 +404,9 @@ function buildTimeline() {
   if (!config.loopBlocks && config.includeCooldown !== false) {
     segments.push({
       kind: "singleVideo",
-      duration: getNumberOrDefault(config.cooldownSeconds, 180),
+      duration: Number(config.cooldownSeconds) || 180,
       label: "STRETCH",
-      directVideoConfigKey: "cooldownPath"
+      item: normalizeAction(config.cooldownPath || "")
     });
   }
 
@@ -460,33 +485,73 @@ function locateSegment(elapsedMs) {
   };
 }
 
-function getSingleVideoPath(segment) {
-  if (!workoutConfig) return null;
-  if (!segment.directVideoConfigKey) return null;
-  return workoutConfig[segment.directVideoConfigKey] || null;
+function getSingleVideoItem(segment) {
+  return segment.item || emptyAction();
 }
 
-function getDualVideoPaths(segment) {
-  if (!workoutConfig) return ["", ""];
+function getDualVideoItems(segment) {
+  if (!workoutConfig) return [emptyAction(), emptyAction()];
 
   const block = workoutConfig.blocks?.[segment.blockIndex];
   const station = block?.stations?.[screenIndex];
 
-  if (!station) return ["", ""];
+  if (!station) return [emptyAction(), emptyAction()];
 
   return [
-    station[0] || "",
-    station[1] || ""
+    normalizeAction(station[0]),
+    normalizeAction(station[1])
   ];
 }
 
-async function getVideoUrlFromPath(path) {
+async function getFirebaseUrl(path) {
   if (!path) return null;
-  if (urlCache[path]) return urlCache[path];
+  if (firebaseUrlCache[path]) return firebaseUrlCache[path];
 
   const url = await storage.ref(path).getDownloadURL();
-  urlCache[path] = url;
+  firebaseUrlCache[path] = url;
   return url;
+}
+
+async function getYMoveUrl(exerciseId) {
+  if (!exerciseId) return null;
+
+  const cached = ymoveUrlCache[exerciseId];
+  if (cached && cached.videoUrl && Number(cached.expiresAt || 0) > Date.now() + 600000) {
+    return cached.videoUrl;
+  }
+
+  const response = await resolveYMoveVideo({
+    exerciseId,
+    forceRefresh: false
+  });
+
+  const data = response.data || {};
+  ymoveUrlCache[exerciseId] = {
+    videoUrl: data.videoUrl,
+    expiresAt: data.expiresAt || 0
+  };
+
+  return data.videoUrl || null;
+}
+
+async function resolveVideoItem(item) {
+  const normalized = normalizeAction(item);
+
+  if (normalized.source === "ymove") {
+    const url = await getYMoveUrl(normalized.exerciseId);
+    return {
+      url,
+      name: normalized.name || "YMove Exercise",
+      key: `ymove:${normalized.exerciseId}`
+    };
+  }
+
+  const url = await getFirebaseUrl(normalized.path);
+  return {
+    url,
+    name: normalized.name || cleanName(normalized.path),
+    key: `firebase:${normalized.path}`
+  };
 }
 
 function getNextVideoInfo(fromIndex) {
@@ -507,12 +572,6 @@ function getNextVideoInfo(fromIndex) {
   }
 
   return null;
-}
-
-function cleanNameFromPath(path) {
-  if (!path) return "";
-  const fileName = decodeURIComponent(path.split("/").pop() || path);
-  return fileName.replace(/\.[^/.]+$/, "");
 }
 
 function getDisplayLabel(segment, requestLabel) {
@@ -555,15 +614,15 @@ async function buildMediaRequest(info) {
         const nextSegment = nextVideoInfo.segment;
 
         if (nextSegment.kind === "dualVideo") {
-          const paths = getDualVideoPaths(nextSegment);
-          const urls = await Promise.all(paths.map(path => getVideoUrlFromPath(path)));
+          const items = getDualVideoItems(nextSegment);
+          const resolved = await Promise.all(items.map(item => resolveVideoItem(item)));
 
-          if (urls[0] || urls[1]) {
+          if (resolved[0]?.url || resolved[1]?.url) {
             return {
               mode: "dual",
-              sourceUrls: urls,
-              paths,
-              contextKey: `preview:${index}:${paths.join("|")}`,
+              sourceUrls: [resolved[0]?.url, resolved[1]?.url],
+              names: [resolved[0]?.name, resolved[1]?.name],
+              contextKey: `preview:${index}:${resolved.map(r => r?.key).join("|")}`,
               seekSeconds: 0,
               shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
               centerText: "UPCOMING\nMOVEMENTS",
@@ -575,15 +634,15 @@ async function buildMediaRequest(info) {
         }
 
         if (nextSegment.kind === "singleVideo") {
-          const path = getSingleVideoPath(nextSegment);
-          const url = await getVideoUrlFromPath(path);
+          const item = getSingleVideoItem(nextSegment);
+          const resolved = await resolveVideoItem(item);
 
-          if (url) {
+          if (resolved.url) {
             return {
               mode: "single",
-              sourceUrls: [url, null],
-              paths: [path, ""],
-              contextKey: `preview:${index}:${path}`,
+              sourceUrls: [resolved.url, null],
+              names: [resolved.name, ""],
+              contextKey: `preview:${index}:${resolved.key}`,
               seekSeconds: 0,
               shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
               centerText: "UPCOMING\nMOVEMENT",
@@ -606,17 +665,17 @@ async function buildMediaRequest(info) {
   }
 
   if (segment.kind === "singleVideo") {
-    const path = getSingleVideoPath(segment);
-    const url = await getVideoUrlFromPath(path);
+    const item = getSingleVideoItem(segment);
+    const resolved = await resolveVideoItem(item);
 
     return {
-      mode: url ? "single" : "none",
-      sourceUrls: [url, null],
-      paths: [path || "", ""],
-      contextKey: `segment:${index}:${path || "missing"}`,
+      mode: resolved.url ? "single" : "none",
+      sourceUrls: [resolved.url, null],
+      names: [resolved.name, ""],
+      contextKey: `segment:${index}:${resolved.key}`,
       seekSeconds: segmentElapsedMs / 1000,
       shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
-      centerText: url ? "" : "MISSING\nVIDEO",
+      centerText: resolved.url ? "" : "MISSING\nVIDEO",
       labelText: segment.label,
       segment,
       remain
@@ -624,17 +683,17 @@ async function buildMediaRequest(info) {
   }
 
   if (segment.kind === "dualVideo") {
-    const paths = getDualVideoPaths(segment);
-    const urls = await Promise.all(paths.map(path => getVideoUrlFromPath(path)));
+    const items = getDualVideoItems(segment);
+    const resolved = await Promise.all(items.map(item => resolveVideoItem(item)));
 
     return {
-      mode: (urls[0] || urls[1]) ? "dual" : "none",
-      sourceUrls: urls,
-      paths,
-      contextKey: `segment:${index}:${paths.join("|")}`,
+      mode: (resolved[0]?.url || resolved[1]?.url) ? "dual" : "none",
+      sourceUrls: [resolved[0]?.url, resolved[1]?.url],
+      names: [resolved[0]?.name, resolved[1]?.name],
+      contextKey: `segment:${index}:${resolved.map(r => r?.key).join("|")}`,
       seekSeconds: segmentElapsedMs / 1000,
       shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
-      centerText: (urls[0] || urls[1]) ? "" : "MISSING\nVIDEOS",
+      centerText: (resolved[0]?.url || resolved[1]?.url) ? "" : "MISSING\nVIDEOS",
       labelText: segment.label,
       segment,
       remain
@@ -767,8 +826,8 @@ function setVideoLayout(request) {
 
   appShell.classList.add(request.mode);
 
-  videoName1.innerText = cleanNameFromPath(request.paths?.[0]);
-  videoName2.innerText = request.mode === "dual" ? cleanNameFromPath(request.paths?.[1]) : "";
+  videoName1.innerText = request.names?.[0] || "";
+  videoName2.innerText = request.mode === "dual" ? (request.names?.[1] || "") : "";
 }
 
 async function render() {
