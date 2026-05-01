@@ -170,8 +170,8 @@ video{
 }
 
 /*
-  Small label used specifically for upcoming previews.
-  This prevents UPCOMING MOVEMENTS from overlapping the timer/top labels.
+  Small label used specifically for next-up previews.
+  This prevents NEXT UP from overlapping the timer/top labels.
 */
 #upcomingLabel{
   position:absolute;
@@ -218,7 +218,7 @@ video{
   </div>
 
   <div id="center"></div>
-  <div id="upcomingLabel">UPCOMING MOVEMENTS</div>
+  <div id="upcomingLabel">NEXT UP</div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -548,6 +548,11 @@ function getDualVideoItems(segment) {
   ];
 }
 
+function getBlockBreakSeconds(blockIndex) {
+  const block = workoutConfig?.blocks?.[blockIndex];
+  return numberOrDefault(block?.breakSeconds, 0);
+}
+
 async function getFirebaseUrl(path) {
   if (!path) return null;
   if (firebaseUrlCache[path]) return firebaseUrlCache[path];
@@ -622,12 +627,12 @@ function getNextVideoInfo(fromIndex) {
 function getDisplayLabel(segment, requestLabel, isUpcoming) {
   if (!segment) return "";
 
-  if (requestLabel === "BREAK" || requestLabel === "REST") {
-    return requestLabel;
-  }
-
   if (isUpcoming) {
     return "NEXT";
+  }
+
+  if (requestLabel === "BREAK" || requestLabel === "REST") {
+    return requestLabel;
   }
 
   if (segment.kind === "dualVideo") {
@@ -642,11 +647,74 @@ function getDisplayLabel(segment, requestLabel, isUpcoming) {
   return workoutConfig?.loopBlocks ? `${requestLabel}\nLOOP` : requestLabel;
 }
 
+async function buildNextUpRequest(index, segment, remain, finished) {
+  const nextVideoInfo = getNextVideoInfo(index);
+
+  if (!nextVideoInfo) return null;
+
+  const nextSegment = nextVideoInfo.segment;
+
+  if (nextSegment.kind === "dualVideo") {
+    const items = getDualVideoItems(nextSegment);
+    const resolved = await Promise.all(items.map(item => resolveVideoItem(item)));
+
+    if (resolved[0]?.url || resolved[1]?.url) {
+      return {
+        mode: "dual",
+        sourceUrls: [resolved[0]?.url, resolved[1]?.url],
+        names: [resolved[0]?.name, resolved[1]?.name],
+        contextKey: `preview:${index}:${resolved.map(r => r?.key).join("|")}`,
+        seekSeconds: 0,
+        shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
+        centerText: "",
+        upcoming: true,
+        labelText: "NEXT",
+        segment,
+        remain
+      };
+    }
+  }
+
+  if (nextSegment.kind === "singleVideo") {
+    const item = getSingleVideoItem(nextSegment);
+    const resolved = await resolveVideoItem(item);
+
+    if (resolved.url) {
+      return {
+        mode: "single",
+        sourceUrls: [resolved.url, null],
+        names: [resolved.name, ""],
+        contextKey: `preview:${index}:${resolved.key}`,
+        seekSeconds: 0,
+        shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
+        centerText: "",
+        upcoming: true,
+        labelText: "NEXT",
+        segment,
+        remain
+      };
+    }
+  }
+
+  return null;
+}
+
 async function buildMediaRequest(info) {
   const { index, segment, segmentElapsedMs, finished } = info;
   const remain = Math.max(0, segment.duration - Math.floor(segmentElapsedMs / 1000));
 
   if (segment.kind === "rest") {
+    const breakSeconds = getBlockBreakSeconds(segment.blockIndex);
+
+    /*
+      If this block has no dedicated break screen, REST becomes the NEXT UP preview screen.
+      If this block has a break screen, REST stays simple and the break handles NEXT UP.
+    */
+    if (breakSeconds <= 0) {
+      const nextUp = await buildNextUpRequest(index, segment, remain, finished);
+      if (nextUp) return nextUp;
+    }
+
     return {
       mode: "none",
       centerText: "REST",
@@ -659,53 +727,8 @@ async function buildMediaRequest(info) {
 
   if (segment.kind === "break") {
     if (remain <= 15) {
-      const nextVideoInfo = getNextVideoInfo(index);
-
-      if (nextVideoInfo) {
-        const nextSegment = nextVideoInfo.segment;
-
-        if (nextSegment.kind === "dualVideo") {
-          const items = getDualVideoItems(nextSegment);
-          const resolved = await Promise.all(items.map(item => resolveVideoItem(item)));
-
-          if (resolved[0]?.url || resolved[1]?.url) {
-            return {
-              mode: "dual",
-              sourceUrls: [resolved[0]?.url, resolved[1]?.url],
-              names: [resolved[0]?.name, resolved[1]?.name],
-              contextKey: `preview:${index}:${resolved.map(r => r?.key).join("|")}`,
-              seekSeconds: 0,
-              shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
-              centerText: "",
-              upcoming: true,
-              labelText: "BREAK",
-              segment,
-              remain
-            };
-          }
-        }
-
-        if (nextSegment.kind === "singleVideo") {
-          const item = getSingleVideoItem(nextSegment);
-          const resolved = await resolveVideoItem(item);
-
-          if (resolved.url) {
-            return {
-              mode: "single",
-              sourceUrls: [resolved.url, null],
-              names: [resolved.name, ""],
-              contextKey: `preview:${index}:${resolved.key}`,
-              seekSeconds: 0,
-              shouldPlay: !state.paused && (!finished || workoutConfig?.loopBlocks),
-              centerText: "",
-              upcoming: true,
-              labelText: "BREAK",
-              segment,
-              remain
-            };
-          }
-        }
-      }
+      const nextUp = await buildNextUpRequest(index, segment, remain, finished);
+      if (nextUp) return nextUp;
     }
 
     return {
