@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>YMove Browser Test</title>
+<title>YMove Approval / Cache Test</title>
 <style>
 :root{
   --bg:#0d0d0d;
@@ -88,17 +88,10 @@ button.danger{
   border:1px solid #8a3333;
 }
 
-button.filter{
-  background:#202020;
+button.good{
+  background:#12351d;
   color:#fff;
-  border:1px solid #555;
-  padding:9px 12px;
-  font-size:14px;
-}
-
-button.filter.active{
-  background:#fff;
-  color:#000;
+  border:1px solid #2d8f4d;
 }
 
 button:disabled{
@@ -113,13 +106,13 @@ button:disabled{
 
 .layout{
   display:grid;
-  grid-template-columns:1.15fr .85fr;
+  grid-template-columns:1.1fr .9fr;
   gap:16px;
 }
 
 .resultsGrid{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  grid-template-columns:repeat(auto-fill,minmax(270px,1fr));
   gap:12px;
 }
 
@@ -229,87 +222,67 @@ pre{
   margin-bottom:8px;
 }
 
-.filterGroup{
-  margin-top:14px;
-}
-
-.filterButtons{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:8px;
-}
-
-.summaryCards{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(120px,1fr));
-  gap:10px;
-  margin-top:12px;
-}
-
-.summaryCard{
-  background:#101010;
+.approvedItem{
+  padding:12px;
   border:1px solid #333;
   border-radius:10px;
-  padding:12px;
+  background:#1c1c1c;
+  margin-bottom:10px;
 }
 
-.summaryNumber{
-  font-size:24px;
+.cacheGood{
+  color:#71d88a;
   font-weight:bold;
 }
 
-.summaryLabel{
-  color:#aaa;
-  font-size:12px;
+.cacheBad{
+  color:#ff7777;
+  font-weight:bold;
 }
 
 @media(max-width:900px){
   .layout{
     grid-template-columns:1fr;
   }
-
-  .summaryCards{
-    grid-template-columns:1fr 1fr;
-  }
 }
 </style>
 </head>
 <body>
 
-<h1>YMove Browser Test</h1>
+<h1>YMove Approval / Cache Test</h1>
 <p>
-  This tests the future builder module: browse by muscle group, browse by exercise type, preview videos, and select Action A/B.
+  This page tests the smart YMove workflow: search text first, fetch preview only when you choose, approve/cache once, then reuse the shared cached URL by exercise ID.
 </p>
 
 <div class="panel">
   <h2>Mock Builder Slot</h2>
-  <p>Choose which action slot you are filling, then search/select a YMove exercise.</p>
+  <p>This simulates what the real builder will eventually do after exercises are approved.</p>
 
   <div class="slotGrid">
     <div id="slotA" class="slot active" onclick="setActiveSlot('A')">
       <div class="slotTitle">Action A</div>
       <div id="slotAName" class="slotExercise">Nothing selected</div>
-      <div id="slotAMeta" class="slotMeta">Click a YMove result and choose “Use for Action A.”</div>
+      <div id="slotAMeta" class="slotMeta">Choose an approved exercise below.</div>
       <button class="danger" onclick="clearSlot(event,'A')">Clear Action A</button>
     </div>
 
     <div id="slotB" class="slot" onclick="setActiveSlot('B')">
       <div class="slotTitle">Action B</div>
       <div id="slotBName" class="slotExercise">Nothing selected</div>
-      <div id="slotBMeta" class="slotMeta">Click a YMove result and choose “Use for Action B.”</div>
+      <div id="slotBMeta" class="slotMeta">Choose an approved exercise below.</div>
       <button class="danger" onclick="clearSlot(event,'B')">Clear Action B</button>
     </div>
   </div>
 </div>
 
 <div class="panel">
-  <h2>Search / Browse YMove</h2>
+  <h2>Search YMove Text Data</h2>
+  <p>No video loads from search. Video only loads when you click <strong>Fetch Preview</strong>.</p>
 
   <div class="row">
     <div class="field">
       <label for="searchBox">Search</label>
-      <input id="searchBox" placeholder="squat, curl, plank, lunge..." value="">
+      <input id="searchBox" placeholder="squat, push up, curl, plank..." value="">
     </div>
 
     <div class="field">
@@ -328,42 +301,18 @@ pre{
     </div>
 
     <div class="field">
-      <label>&nbsp;</label>
-      <button onclick="newSearch()">Search</button>
+      <label for="muscleFilter">Muscle Group</label>
+      <input id="muscleFilter" placeholder="chest, quads, core...">
+    </div>
+
+    <div class="field">
+      <label for="typeFilter">Exercise Type</label>
+      <input id="typeFilter" placeholder="strength, mobility...">
     </div>
 
     <div class="field">
       <label>&nbsp;</label>
-      <button class="danger" onclick="resetFilters()">Reset Filters</button>
-    </div>
-  </div>
-
-  <div class="filterGroup">
-    <h3>Browse by Muscle Group</h3>
-    <div id="muscleButtons" class="filterButtons"></div>
-  </div>
-
-  <div class="filterGroup">
-    <h3>Browse by Exercise Type</h3>
-    <div id="typeButtons" class="filterButtons"></div>
-  </div>
-
-  <div class="summaryCards">
-    <div class="summaryCard">
-      <div id="shownCount" class="summaryNumber">0</div>
-      <div class="summaryLabel">Shown</div>
-    </div>
-    <div class="summaryCard">
-      <div id="rawCount" class="summaryNumber">0</div>
-      <div class="summaryLabel">Raw Returned</div>
-    </div>
-    <div class="summaryCard">
-      <div id="activeMuscle" class="summaryNumber">-</div>
-      <div class="summaryLabel">Muscle</div>
-    </div>
-    <div class="summaryCard">
-      <div id="activeType" class="summaryNumber">-</div>
-      <div class="summaryLabel">Type</div>
+      <button onclick="searchExercises()">Search</button>
     </div>
   </div>
 
@@ -373,8 +322,14 @@ pre{
 <div class="layout">
   <div>
     <div class="panel">
-      <h2>Results</h2>
+      <h2>Search Results</h2>
       <div id="results" class="resultsGrid"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Approved YMove Library</h2>
+      <p>These are saved in Firebase and can be reused by the real builder later.</p>
+      <div id="approvedList"></div>
     </div>
   </div>
 
@@ -388,11 +343,17 @@ pre{
       </div>
 
       <div id="previewMeta" style="margin-top:10px;color:#aaa;"></div>
+
+      <div style="margin-top:12px;">
+        <button id="approveBtn" class="good" onclick="approveCurrentPreview()" disabled>
+          Approve + Cache This Preview
+        </button>
+      </div>
     </div>
 
     <div class="panel">
       <h2>Future Saved Object</h2>
-      <p>This is the type of object we would later save into your real builder config.</p>
+      <p>This is what one station would eventually save into your workout builder.</p>
       <pre id="savedObjectBox">{}</pre>
     </div>
 
@@ -405,6 +366,7 @@ pre{
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
 const firebaseConfig = {
@@ -418,53 +380,27 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 const functions = firebase.app().functions("us-central1");
+const db = firebase.database();
 
 const searchYMoveExercises = functions.httpsCallable("searchYMoveExercises");
 const getYMoveExercise = functions.httpsCallable("getYMoveExercise");
-
-const MUSCLE_GROUPS = [
-  "chest",
-  "back",
-  "shoulders",
-  "biceps",
-  "triceps",
-  "forearms",
-  "quads",
-  "hamstrings",
-  "glutes",
-  "calves",
-  "core",
-  "full_body"
-];
-
-const EXERCISE_TYPES = [
-  "strength",
-  "yoga",
-  "stretching",
-  "cardio",
-  "plyometric",
-  "calisthenics",
-  "warmup",
-  "cooldown",
-  "balance",
-  "mobility",
-  "isometric",
-  "rehabilitation",
-  "functional",
-  "core",
-  "hiit"
-];
+const approveYMoveExercise = functions.httpsCallable("approveYMoveExercise");
+const resolveYMoveVideo = functions.httpsCallable("resolveYMoveVideo");
 
 const searchBox = document.getElementById("searchBox");
 const difficultyFilter = document.getElementById("difficultyFilter");
 const equipmentFilter = document.getElementById("equipmentFilter");
+const muscleFilter = document.getElementById("muscleFilter");
+const typeFilter = document.getElementById("typeFilter");
 
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
+const approvedListEl = document.getElementById("approvedList");
 
 const selectedNameEl = document.getElementById("selectedName");
 const previewVideo = document.getElementById("previewVideo");
 const previewMeta = document.getElementById("previewMeta");
+const approveBtn = document.getElementById("approveBtn");
 
 const debugBox = document.getElementById("debugBox");
 const savedObjectBox = document.getElementById("savedObjectBox");
@@ -476,40 +412,14 @@ const slotBName = document.getElementById("slotBName");
 const slotAMeta = document.getElementById("slotAMeta");
 const slotBMeta = document.getElementById("slotBMeta");
 
-const muscleButtons = document.getElementById("muscleButtons");
-const typeButtons = document.getElementById("typeButtons");
-
-const shownCountEl = document.getElementById("shownCount");
-const rawCountEl = document.getElementById("rawCount");
-const activeMuscleEl = document.getElementById("activeMuscle");
-const activeTypeEl = document.getElementById("activeType");
-
+let currentPreviewExercise = null;
 let activeSlot = "A";
 let selectedSlots = {
   A: null,
   B: null
 };
 
-let selectedMuscleGroup = "";
-let selectedExerciseType = "";
-
-let allLoadedExercises = [];
-let seenExerciseKeys = new Set();
-
-const PAGE_SIZE = 50;
-
-function setActiveSlot(slot) {
-  activeSlot = slot;
-  slotA.classList.toggle("active", slot === "A");
-  slotB.classList.toggle("active", slot === "B");
-}
-
-function clearSlot(event, slot) {
-  event.stopPropagation();
-  selectedSlots[slot] = null;
-  renderSlots();
-  renderSavedObject();
-}
+let approvedExercises = {};
 
 function showDebug(label, value) {
   debugBox.textContent = label + "\n\n" + JSON.stringify(value, null, 2);
@@ -535,10 +445,6 @@ function getExerciseArray(apiResponse) {
 
 function getExerciseId(exercise) {
   return exercise.id || exercise.exerciseId || exercise.slug || exercise._id || "";
-}
-
-function getExerciseKey(exercise) {
-  return getExerciseId(exercise) || exercise.slug || exercise.title || JSON.stringify(exercise);
 }
 
 function getExerciseName(exercise) {
@@ -593,20 +499,44 @@ function getVideoUrl(exercise) {
   return "";
 }
 
-function makeBuilderItem(exercise) {
+function makeBuilderItem(approved) {
   return {
     source: "ymove",
-    exerciseId: getExerciseId(exercise),
-    name: getExerciseName(exercise),
-    meta: {
-      category: exercise.category || "",
-      muscleGroup: exercise.muscleGroup || "",
-      equipment: exercise.equipment || "",
-      difficulty: exercise.difficulty || "",
-      exerciseType: exercise.exerciseType || "",
-      slug: exercise.slug || ""
-    }
+    exerciseId: approved.exerciseId,
+    name: approved.name,
+    meta: approved.meta || {}
   };
+}
+
+function cacheStatus(cache) {
+  if (!cache || !cache.expiresAt) {
+    return `<span class="cacheBad">No cache</span>`;
+  }
+
+  const now = Date.now();
+  const remainingMs = Number(cache.expiresAt) - now;
+
+  if (remainingMs <= 0) {
+    return `<span class="cacheBad">Expired</span>`;
+  }
+
+  const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+  const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+
+  return `<span class="cacheGood">Valid ~${hours}h ${minutes}m</span>`;
+}
+
+function setActiveSlot(slot) {
+  activeSlot = slot;
+  slotA.classList.toggle("active", slot === "A");
+  slotB.classList.toggle("active", slot === "B");
+}
+
+function clearSlot(event, slot) {
+  event.stopPropagation();
+  selectedSlots[slot] = null;
+  renderSlots();
+  renderSavedObject();
 }
 
 function renderSlots() {
@@ -621,7 +551,7 @@ function renderSlots() {
     ].filter(Boolean).join(" • ") || "YMove exercise";
   } else {
     slotAName.textContent = "Nothing selected";
-    slotAMeta.textContent = "Click a YMove result and choose “Use for Action A.”";
+    slotAMeta.textContent = "Choose an approved exercise below.";
   }
 
   if (selectedSlots.B) {
@@ -635,7 +565,7 @@ function renderSlots() {
     ].filter(Boolean).join(" • ") || "YMove exercise";
   } else {
     slotBName.textContent = "Nothing selected";
-    slotBMeta.textContent = "Click a YMove result and choose “Use for Action B.”";
+    slotBMeta.textContent = "Choose an approved exercise below.";
   }
 }
 
@@ -648,74 +578,8 @@ function renderSavedObject() {
   savedObjectBox.textContent = JSON.stringify(futureStationObject, null, 2);
 }
 
-function addExercisesToMemory(exercises) {
-  const newExercises = [];
-
-  exercises.forEach(exercise => {
-    const key = getExerciseKey(exercise);
-
-    if (!seenExerciseKeys.has(key)) {
-      seenExerciseKeys.add(key);
-      allLoadedExercises.push(exercise);
-      newExercises.push(exercise);
-    }
-  });
-
-  return newExercises;
-}
-
-function renderFilterButtons() {
-  muscleButtons.innerHTML = "";
-
-  const allMuscleButton = document.createElement("button");
-  allMuscleButton.className = `filter ${selectedMuscleGroup === "" ? "active" : ""}`;
-  allMuscleButton.textContent = "Any";
-  allMuscleButton.onclick = () => browseMuscle("");
-  muscleButtons.appendChild(allMuscleButton);
-
-  MUSCLE_GROUPS.forEach(group => {
-    const button = document.createElement("button");
-    button.className = `filter ${selectedMuscleGroup === group ? "active" : ""}`;
-    button.textContent = group.replace("_", " ");
-    button.onclick = () => browseMuscle(group);
-    muscleButtons.appendChild(button);
-  });
-
-  typeButtons.innerHTML = "";
-
-  const allTypeButton = document.createElement("button");
-  allTypeButton.className = `filter ${selectedExerciseType === "" ? "active" : ""}`;
-  allTypeButton.textContent = "Any";
-  allTypeButton.onclick = () => browseType("");
-  typeButtons.appendChild(allTypeButton);
-
-  EXERCISE_TYPES.forEach(type => {
-    const button = document.createElement("button");
-    button.className = `filter ${selectedExerciseType === type ? "active" : ""}`;
-    button.textContent = type;
-    button.onclick = () => browseType(type);
-    typeButtons.appendChild(button);
-  });
-}
-
-function updateSummary(rawCount = 0) {
-  shownCountEl.textContent = String(allLoadedExercises.length);
-  rawCountEl.textContent = String(rawCount);
-  activeMuscleEl.textContent = selectedMuscleGroup || "-";
-  activeTypeEl.textContent = selectedExerciseType || "-";
-}
-
-function clearResults() {
+function renderSearchResults(exercises) {
   resultsEl.innerHTML = "";
-  allLoadedExercises = [];
-  seenExerciseKeys = new Set();
-  updateSummary(0);
-}
-
-function renderResults(exercises, append = false) {
-  if (!append) {
-    resultsEl.innerHTML = "";
-  }
 
   exercises.forEach(exercise => {
     const id = getExerciseId(exercise);
@@ -749,96 +613,120 @@ function renderResults(exercises, append = false) {
 
     const previewBtn = document.createElement("button");
     previewBtn.className = "secondary";
-    previewBtn.textContent = "Preview";
-    previewBtn.onclick = () => previewExercise(id, name);
-
-    const useAButton = document.createElement("button");
-    useAButton.textContent = "Use for A";
-    useAButton.onclick = () => chooseExercise("A", exercise);
-
-    const useBButton = document.createElement("button");
-    useBButton.textContent = "Use for B";
-    useBButton.onclick = () => chooseExercise("B", exercise);
+    previewBtn.textContent = "Fetch Preview";
+    previewBtn.onclick = () => fetchPreview(id, name);
 
     actions.appendChild(previewBtn);
-    actions.appendChild(useAButton);
-    actions.appendChild(useBButton);
-
     div.appendChild(actions);
     resultsEl.appendChild(div);
   });
 }
 
-function chooseExercise(slot, exercise) {
-  selectedSlots[slot] = makeBuilderItem(exercise);
+function renderApprovedLibrary() {
+  approvedListEl.innerHTML = "";
+
+  const list = Object.values(approvedExercises || {}).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""))
+  );
+
+  if (!list.length) {
+    approvedListEl.innerHTML = `<p>No approved YMove exercises yet.</p>`;
+    return;
+  }
+
+  list.forEach(approved => {
+    const div = document.createElement("div");
+    div.className = "approvedItem";
+
+    const meta = [
+      approved.meta?.category,
+      approved.meta?.muscleGroup,
+      approved.meta?.equipment,
+      approved.meta?.difficulty,
+      approved.meta?.exerciseType
+    ].filter(Boolean).join(" • ");
+
+    div.innerHTML = `
+      <div class="resultTitle">${approved.name}</div>
+      <div class="resultMeta">
+        ID: ${approved.exerciseId}<br>
+        ${meta || "No metadata"}<br>
+        Cache: ${cacheStatus(approved.cache)}
+      </div>
+    `;
+
+    const actions = document.createElement("div");
+    actions.className = "resultActions";
+    actions.style.marginTop = "10px";
+
+    const useAButton = document.createElement("button");
+    useAButton.textContent = "Use for A";
+    useAButton.onclick = () => chooseApproved("A", approved);
+
+    const useBButton = document.createElement("button");
+    useBButton.textContent = "Use for B";
+    useBButton.onclick = () => chooseApproved("B", approved);
+
+    const testCacheButton = document.createElement("button");
+    testCacheButton.className = "secondary";
+    testCacheButton.textContent = "Preview Cached";
+    testCacheButton.onclick = () => previewApproved(approved.exerciseId, false);
+
+    const refreshButton = document.createElement("button");
+    refreshButton.className = "danger";
+    refreshButton.textContent = "Refresh URL";
+    refreshButton.onclick = () => previewApproved(approved.exerciseId, true);
+
+    actions.appendChild(useAButton);
+    actions.appendChild(useBButton);
+    actions.appendChild(testCacheButton);
+    actions.appendChild(refreshButton);
+
+    div.appendChild(actions);
+    approvedListEl.appendChild(div);
+  });
+}
+
+function chooseApproved(slot, approved) {
+  selectedSlots[slot] = makeBuilderItem(approved);
   setActiveSlot(slot === "A" ? "B" : "A");
   renderSlots();
   renderSavedObject();
 }
 
-function browseMuscle(group) {
-  selectedMuscleGroup = group;
-  renderFilterButtons();
-  newSearch();
-}
+async function searchExercises() {
+  const q = searchBox.value.trim();
 
-function browseType(type) {
-  selectedExerciseType = type;
-  renderFilterButtons();
-  newSearch();
-}
-
-function resetFilters() {
-  searchBox.value = "";
-  difficultyFilter.value = "";
-  equipmentFilter.value = "";
-  selectedMuscleGroup = "";
-  selectedExerciseType = "";
-  renderFilterButtons();
-  clearResults();
-  statusEl.textContent = "Filters reset.";
-}
-
-function getSearchPayload() {
-  return {
-    q: searchBox.value.trim(),
-    limit: PAGE_SIZE,
-    difficulty: difficultyFilter.value.trim(),
-    equipment: equipmentFilter.value.trim(),
-    muscleGroup: selectedMuscleGroup,
-    exerciseType: selectedExerciseType,
-    hasVideo: true
-  };
-}
-
-async function newSearch() {
-  clearResults();
-
-  statusEl.textContent = "Searching...";
-
+  statusEl.textContent = "Searching text data only...";
+  resultsEl.innerHTML = "";
+  currentPreviewExercise = null;
+  approveBtn.disabled = true;
   previewVideo.removeAttribute("src");
   selectedNameEl.textContent = "No preview selected";
   previewMeta.textContent = "";
 
   try {
-    const payload = getSearchPayload();
-    const response = await searchYMoveExercises(payload);
+    const response = await searchYMoveExercises({
+      q,
+      limit: 20,
+      difficulty: difficultyFilter.value.trim(),
+      equipment: equipmentFilter.value.trim(),
+      muscleGroup: muscleFilter.value.trim(),
+      exerciseType: typeFilter.value.trim(),
+      hasVideo: true
+    });
 
     showDebug("Search response:", response.data);
 
     const exercises = getExerciseArray(response.data);
-    const newExercises = addExercisesToMemory(exercises);
 
-    if (!newExercises.length) {
-      statusEl.textContent = "No exercises found for this filter/search.";
-      updateSummary(exercises.length);
+    if (!exercises.length) {
+      statusEl.textContent = "No exercises found.";
       return;
     }
 
-    renderResults(newExercises, false);
-    updateSummary(exercises.length);
-
-    statusEl.textContent = `Showing ${newExercises.length} exercises.`;
+    renderSearchResults(exercises);
+    statusEl.textContent = `Found ${exercises.length} text results. No videos loaded yet.`;
 
   } catch (error) {
     console.error(error);
@@ -847,15 +735,17 @@ async function newSearch() {
   }
 }
 
-async function previewExercise(id, name) {
+async function fetchPreview(id, name) {
   if (!id) {
     statusEl.textContent = "Missing exercise ID.";
     return;
   }
 
-  statusEl.textContent = "Loading preview...";
+  statusEl.textContent = "Fetching preview from YMove...";
   selectedNameEl.textContent = name;
   previewMeta.textContent = "";
+  approveBtn.disabled = true;
+  currentPreviewExercise = null;
 
   try {
     const response = await getYMoveExercise({ id });
@@ -863,42 +753,109 @@ async function previewExercise(id, name) {
     const exerciseResponse = response.data;
     const exercise = unwrapApiData(exerciseResponse);
 
-    showDebug("Exercise detail response:", exerciseResponse);
+    showDebug("Exercise preview response:", exerciseResponse);
 
     const videoUrl = getVideoUrl(exercise);
 
     if (!videoUrl) {
-      statusEl.textContent = "Exercise loaded, but no video URL was found. Raw response is shown below.";
+      statusEl.textContent = "Exercise loaded, but no video URL was found.";
       return;
     }
+
+    currentPreviewExercise = exercise;
 
     previewVideo.src = videoUrl;
     previewVideo.load();
 
     previewMeta.innerHTML = `
       <div>${getExerciseMeta(exercise) || "No metadata"}</div>
-      <div style="margin-top:6px;">Video source: YMove</div>
+      <div style="margin-top:6px;">This preview can now be approved and cached.</div>
     `;
 
-    statusEl.textContent = "Preview loaded.";
+    approveBtn.disabled = false;
+    statusEl.textContent = "Preview loaded. Click Approve + Cache if this video is useful.";
 
   } catch (error) {
     console.error(error);
     showDebug("Preview error:", error);
-    statusEl.textContent = "Error loading exercise: " + error.message;
+    statusEl.textContent = "Error loading preview: " + error.message;
   }
 }
 
+async function approveCurrentPreview() {
+  if (!currentPreviewExercise) {
+    statusEl.textContent = "No preview exercise available to approve.";
+    return;
+  }
+
+  statusEl.textContent = "Approving and caching this exercise...";
+
+  try {
+    const response = await approveYMoveExercise({
+      exercise: currentPreviewExercise
+    });
+
+    showDebug("Approve response:", response.data);
+
+    statusEl.textContent = "Exercise approved and cached.";
+    approveBtn.disabled = true;
+
+  } catch (error) {
+    console.error(error);
+    showDebug("Approve error:", error);
+    statusEl.textContent = "Error approving exercise: " + error.message;
+  }
+}
+
+async function previewApproved(exerciseId, forceRefresh) {
+  statusEl.textContent = forceRefresh
+    ? "Refreshing YMove URL..."
+    : "Resolving cached YMove URL...";
+
+  try {
+    const response = await resolveYMoveVideo({
+      exerciseId,
+      forceRefresh
+    });
+
+    const resolved = response.data;
+
+    showDebug("Resolve response:", resolved);
+
+    selectedNameEl.textContent = resolved.name || exerciseId;
+    previewVideo.src = resolved.videoUrl;
+    previewVideo.load();
+
+    previewMeta.innerHTML = `
+      <div>Resolved source: ${resolved.source}</div>
+      <div>Expires: ${resolved.expiresAt ? new Date(resolved.expiresAt).toLocaleString() : "Unknown"}</div>
+    `;
+
+    statusEl.textContent = forceRefresh
+      ? "Fresh URL pulled and cache updated."
+      : "Cached URL resolved.";
+
+  } catch (error) {
+    console.error(error);
+    showDebug("Resolve error:", error);
+    statusEl.textContent = "Error resolving approved exercise: " + error.message;
+  }
+}
+
+db.ref("ymoveApprovedExercises").on("value", snap => {
+  approvedExercises = snap.val() || {};
+  renderApprovedLibrary();
+});
+
 searchBox.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    newSearch();
+    searchExercises();
   }
 });
 
-renderFilterButtons();
 renderSlots();
 renderSavedObject();
-updateSummary(0);
+renderApprovedLibrary();
 </script>
 
 </body>
