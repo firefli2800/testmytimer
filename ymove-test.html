@@ -94,6 +94,19 @@ button.good{
   border:1px solid #2d8f4d;
 }
 
+button.filter{
+  background:#202020;
+  color:#fff;
+  border:1px solid #555;
+  padding:9px 12px;
+  font-size:14px;
+}
+
+button.filter.active{
+  background:#fff;
+  color:#000;
+}
+
 button:disabled{
   opacity:.5;
   cursor:not-allowed;
@@ -135,6 +148,14 @@ button:disabled{
   color:#aaa;
   font-size:13px;
   line-height:1.35;
+}
+
+.resultDescription{
+  color:#ccc;
+  font-size:13px;
+  line-height:1.35;
+  max-height:72px;
+  overflow:auto;
 }
 
 .resultActions{
@@ -240,9 +261,57 @@ pre{
   font-weight:bold;
 }
 
+.filterButtons{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+
+.paginationBar{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.paginationInfo{
+  color:#bbb;
+  font-size:14px;
+}
+
+.summaryCards{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(120px,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+
+.summaryCard{
+  background:#101010;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:12px;
+}
+
+.summaryNumber{
+  font-size:24px;
+  font-weight:bold;
+}
+
+.summaryLabel{
+  color:#aaa;
+  font-size:12px;
+}
+
 @media(max-width:900px){
   .layout{
     grid-template-columns:1fr;
+  }
+
+  .summaryCards{
+    grid-template-columns:1fr 1fr;
   }
 }
 </style>
@@ -281,7 +350,7 @@ pre{
 
   <div class="row">
     <div class="field">
-      <label for="searchBox">Search</label>
+      <label for="searchBox">Search by Exercise Title</label>
       <input id="searchBox" placeholder="squat, push up, curl, plank..." value="">
     </div>
 
@@ -311,8 +380,50 @@ pre{
     </div>
 
     <div class="field">
+      <label for="videoStyle">Video Style</label>
+      <select id="videoStyle">
+        <option value="gym">Gym-shot preferred</option>
+        <option value="white">White-background preferred</option>
+        <option value="any">Any video</option>
+      </select>
+    </div>
+
+    <div class="field">
       <label>&nbsp;</label>
-      <button onclick="searchExercises()">Search</button>
+      <button onclick="startSearch()">Search</button>
+    </div>
+
+    <div class="field">
+      <label>&nbsp;</label>
+      <button class="danger" onclick="resetSearch()">Reset</button>
+    </div>
+  </div>
+
+  <h3 style="margin-top:18px;">Quick Muscle Group Filters</h3>
+  <div id="muscleButtons" class="filterButtons"></div>
+
+  <h3 style="margin-top:18px;">Quick Exercise Type Filters</h3>
+  <div id="typeButtons" class="filterButtons"></div>
+
+  <div class="summaryCards">
+    <div class="summaryCard">
+      <div id="shownCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Shown This Page</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="totalCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Total Matches</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="pageCount" class="summaryNumber">-</div>
+      <div class="summaryLabel">Page</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="pageSizeCount" class="summaryNumber">20</div>
+      <div class="summaryLabel">Page Size</div>
     </div>
   </div>
 
@@ -324,6 +435,12 @@ pre{
     <div class="panel">
       <h2>Search Results</h2>
       <div id="results" class="resultsGrid"></div>
+
+      <div class="paginationBar">
+        <button id="prevPageBtn" class="secondary" onclick="prevPage()" disabled>Previous Page</button>
+        <button id="nextPageBtn" class="secondary" onclick="nextPage()" disabled>Next Page</button>
+        <div id="paginationInfo" class="paginationInfo">No search yet.</div>
+      </div>
     </div>
 
     <div class="panel">
@@ -387,11 +504,45 @@ const getYMoveExercise = functions.httpsCallable("getYMoveExercise");
 const approveYMoveExercise = functions.httpsCallable("approveYMoveExercise");
 const resolveYMoveVideo = functions.httpsCallable("resolveYMoveVideo");
 
+const MUSCLE_GROUPS = [
+  "chest",
+  "back",
+  "shoulders",
+  "biceps",
+  "triceps",
+  "forearms",
+  "quads",
+  "hamstrings",
+  "glutes",
+  "calves",
+  "core",
+  "full_body"
+];
+
+const EXERCISE_TYPES = [
+  "strength",
+  "yoga",
+  "stretching",
+  "cardio",
+  "plyometric",
+  "calisthenics",
+  "warmup",
+  "cooldown",
+  "balance",
+  "mobility",
+  "isometric",
+  "rehabilitation",
+  "functional",
+  "core",
+  "hiit"
+];
+
 const searchBox = document.getElementById("searchBox");
 const difficultyFilter = document.getElementById("difficultyFilter");
 const equipmentFilter = document.getElementById("equipmentFilter");
 const muscleFilter = document.getElementById("muscleFilter");
 const typeFilter = document.getElementById("typeFilter");
+const videoStyle = document.getElementById("videoStyle");
 
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
@@ -412,6 +563,18 @@ const slotBName = document.getElementById("slotBName");
 const slotAMeta = document.getElementById("slotAMeta");
 const slotBMeta = document.getElementById("slotBMeta");
 
+const muscleButtons = document.getElementById("muscleButtons");
+const typeButtons = document.getElementById("typeButtons");
+
+const shownCount = document.getElementById("shownCount");
+const totalCount = document.getElementById("totalCount");
+const pageCount = document.getElementById("pageCount");
+const pageSizeCount = document.getElementById("pageSizeCount");
+
+const prevPageBtn = document.getElementById("prevPageBtn");
+const nextPageBtn = document.getElementById("nextPageBtn");
+const paginationInfo = document.getElementById("paginationInfo");
+
 let currentPreviewExercise = null;
 let activeSlot = "A";
 let selectedSlots = {
@@ -420,6 +583,10 @@ let selectedSlots = {
 };
 
 let approvedExercises = {};
+
+let currentPage = 1;
+let currentPagination = null;
+const PAGE_SIZE = 20;
 
 function showDebug(label, value) {
   debugBox.textContent = label + "\n\n" + JSON.stringify(value, null, 2);
@@ -431,16 +598,21 @@ function unwrapApiData(apiResponse) {
 }
 
 function getExerciseArray(apiResponse) {
-  const data = unwrapApiData(apiResponse) || {};
+  const data = apiResponse || {};
 
   if (Array.isArray(data)) return data;
+  if (Array.isArray(data.data)) return data.data;
+  if (data.data && Array.isArray(data.data.data)) return data.data.data;
   if (Array.isArray(data.exercises)) return data.exercises;
   if (Array.isArray(data.results)) return data.results;
-  if (Array.isArray(data.data)) return data.data;
-  if (data.data && Array.isArray(data.data.exercises)) return data.data.exercises;
-  if (data.data && Array.isArray(data.data.results)) return data.data.results;
 
   return [];
+}
+
+function getPagination(apiResponse) {
+  return apiResponse?.pagination ||
+         apiResponse?.data?.pagination ||
+         null;
 }
 
 function getExerciseId(exercise) {
@@ -451,6 +623,11 @@ function getExerciseName(exercise) {
   return exercise.title || exercise.name || exercise.displayName || exercise.exerciseName || "Unnamed Exercise";
 }
 
+function normalizeExerciseType(type) {
+  if (Array.isArray(type)) return type.join(", ");
+  return type || "";
+}
+
 function getExerciseMeta(exercise) {
   const parts = [];
 
@@ -458,7 +635,9 @@ function getExerciseMeta(exercise) {
   if (exercise.muscleGroup) parts.push(exercise.muscleGroup);
   if (exercise.equipment) parts.push(exercise.equipment);
   if (exercise.difficulty) parts.push(exercise.difficulty);
-  if (exercise.exerciseType) parts.push(exercise.exerciseType);
+
+  const type = normalizeExerciseType(exercise.exerciseType);
+  if (type) parts.push(type);
 
   return parts.filter(Boolean).join(" • ");
 }
@@ -467,20 +646,48 @@ function getVideoUrl(exercise) {
   if (!exercise) return "";
 
   if (Array.isArray(exercise.videos) && exercise.videos.length) {
+    const gymPortraitPrimary = exercise.videos.find(video =>
+      video.tag === "gym-shot" &&
+      video.orientation === "portrait" &&
+      video.isPrimary &&
+      video.videoUrl
+    );
+
+    if (gymPortraitPrimary) return gymPortraitPrimary.videoUrl;
+
+    const gymPortrait = exercise.videos.find(video =>
+      video.tag === "gym-shot" &&
+      video.orientation === "portrait" &&
+      video.videoUrl
+    );
+
+    if (gymPortrait) return gymPortrait.videoUrl;
+
     const portraitPrimary = exercise.videos.find(video =>
-      video.orientation === "portrait" && video.isPrimary && video.videoUrl
+      video.orientation === "portrait" &&
+      video.isPrimary &&
+      video.videoUrl
     );
 
     if (portraitPrimary) return portraitPrimary.videoUrl;
 
     const portrait = exercise.videos.find(video =>
-      video.orientation === "portrait" && video.videoUrl
+      video.orientation === "portrait" &&
+      video.videoUrl
     );
 
     if (portrait) return portrait.videoUrl;
 
+    const gymShot = exercise.videos.find(video =>
+      video.tag === "gym-shot" &&
+      video.videoUrl
+    );
+
+    if (gymShot) return gymShot.videoUrl;
+
     const primary = exercise.videos.find(video =>
-      video.isPrimary && video.videoUrl
+      video.isPrimary &&
+      video.videoUrl
     );
 
     if (primary) return primary.videoUrl;
@@ -578,6 +785,38 @@ function renderSavedObject() {
   savedObjectBox.textContent = JSON.stringify(futureStationObject, null, 2);
 }
 
+function renderFilterButtons() {
+  muscleButtons.innerHTML = "";
+
+  MUSCLE_GROUPS.forEach(group => {
+    const button = document.createElement("button");
+    button.className = `filter ${muscleFilter.value.trim() === group ? "active" : ""}`;
+    button.textContent = group.replace("_", " ");
+    button.onclick = () => {
+      muscleFilter.value = group;
+      currentPage = 1;
+      searchExercises();
+      renderFilterButtons();
+    };
+    muscleButtons.appendChild(button);
+  });
+
+  typeButtons.innerHTML = "";
+
+  EXERCISE_TYPES.forEach(type => {
+    const button = document.createElement("button");
+    button.className = `filter ${typeFilter.value.trim() === type ? "active" : ""}`;
+    button.textContent = type;
+    button.onclick = () => {
+      typeFilter.value = type;
+      currentPage = 1;
+      searchExercises();
+      renderFilterButtons();
+    };
+    typeButtons.appendChild(button);
+  });
+}
+
 function renderSearchResults(exercises) {
   resultsEl.innerHTML = "";
 
@@ -594,7 +833,7 @@ function renderSearchResults(exercises) {
       exercise.muscleGroup,
       exercise.equipment,
       exercise.difficulty,
-      exercise.exerciseType
+      normalizeExerciseType(exercise.exerciseType)
     ].filter(Boolean).map(item => `<span class="badge">${item}</span>`).join("");
 
     div.innerHTML = `
@@ -605,6 +844,7 @@ function renderSearchResults(exercises) {
           ${meta || "No metadata"}
         </div>
         <div>${badges}</div>
+        <div class="resultDescription">${exercise.description || ""}</div>
       </div>
     `;
 
@@ -694,8 +934,28 @@ function chooseApproved(slot, approved) {
   renderSavedObject();
 }
 
+function getVideoStylePayload() {
+  const style = videoStyle.value;
+
+  if (style === "gym") {
+    return {
+      hasVideoGym: true,
+      videoTag: "gym-shot"
+    };
+  }
+
+  if (style === "white") {
+    return {
+      hasVideoWhite: true,
+      videoTag: "white-background"
+    };
+  }
+
+  return {};
+}
+
 async function searchExercises() {
-  const q = searchBox.value.trim();
+  const search = searchBox.value.trim();
 
   statusEl.textContent = "Searching text data only...";
   resultsEl.innerHTML = "";
@@ -707,25 +967,35 @@ async function searchExercises() {
 
   try {
     const response = await searchYMoveExercises({
-      q,
-      limit: 20,
+      search,
+      page: currentPage,
+      pageSize: PAGE_SIZE,
       difficulty: difficultyFilter.value.trim(),
       equipment: equipmentFilter.value.trim(),
       muscleGroup: muscleFilter.value.trim(),
       exerciseType: typeFilter.value.trim(),
-      hasVideo: true
+      hasVideo: true,
+      ...getVideoStylePayload()
     });
 
     showDebug("Search response:", response.data);
 
     const exercises = getExerciseArray(response.data);
+    const pagination = getPagination(response.data);
+
+    currentPagination = pagination;
 
     if (!exercises.length) {
       statusEl.textContent = "No exercises found.";
+      renderPagination();
+      updateSummary(0, pagination);
       return;
     }
 
     renderSearchResults(exercises);
+    renderPagination();
+    updateSummary(exercises.length, pagination);
+
     statusEl.textContent = `Found ${exercises.length} text results. No videos loaded yet.`;
 
   } catch (error) {
@@ -733,6 +1003,65 @@ async function searchExercises() {
     showDebug("Search error:", error);
     statusEl.textContent = "Error searching YMove: " + error.message;
   }
+}
+
+function updateSummary(shown, pagination) {
+  shownCount.textContent = String(shown || 0);
+  totalCount.textContent = pagination?.total ? String(pagination.total) : "0";
+  pageCount.textContent = pagination ? `${pagination.page}/${pagination.totalPages}` : "-";
+  pageSizeCount.textContent = pagination?.pageSize ? String(pagination.pageSize) : String(PAGE_SIZE);
+}
+
+function renderPagination() {
+  if (!currentPagination) {
+    prevPageBtn.disabled = true;
+    nextPageBtn.disabled = true;
+    paginationInfo.textContent = "No pagination data.";
+    return;
+  }
+
+  prevPageBtn.disabled = currentPagination.page <= 1;
+  nextPageBtn.disabled = currentPagination.page >= currentPagination.totalPages;
+
+  paginationInfo.textContent =
+    `Page ${currentPagination.page} of ${currentPagination.totalPages} — ${currentPagination.total} total matches.`;
+}
+
+function startSearch() {
+  currentPage = 1;
+  searchExercises();
+  renderFilterButtons();
+}
+
+function prevPage() {
+  if (!currentPagination || currentPagination.page <= 1) return;
+  currentPage = currentPagination.page - 1;
+  searchExercises();
+}
+
+function nextPage() {
+  if (!currentPagination || currentPagination.page >= currentPagination.totalPages) return;
+  currentPage = currentPagination.page + 1;
+  searchExercises();
+}
+
+function resetSearch() {
+  searchBox.value = "";
+  difficultyFilter.value = "";
+  equipmentFilter.value = "";
+  muscleFilter.value = "";
+  typeFilter.value = "";
+  videoStyle.value = "gym";
+  currentPage = 1;
+  currentPagination = null;
+
+  resultsEl.innerHTML = "";
+  statusEl.textContent = "Search reset.";
+  paginationInfo.textContent = "No search yet.";
+  prevPageBtn.disabled = true;
+  nextPageBtn.disabled = true;
+  updateSummary(0, null);
+  renderFilterButtons();
 }
 
 async function fetchPreview(id, name) {
@@ -849,13 +1178,15 @@ db.ref("ymoveApprovedExercises").on("value", snap => {
 
 searchBox.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    searchExercises();
+    startSearch();
   }
 });
 
+renderFilterButtons();
 renderSlots();
 renderSavedObject();
 renderApprovedLibrary();
+updateSummary(0, null);
 </script>
 
 </body>
