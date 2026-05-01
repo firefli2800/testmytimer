@@ -6,55 +6,101 @@
 <style>
 body{
   font-family:Arial,sans-serif;
-  background:#111;
+  background:#0f0f0f;
   color:#fff;
-  padding:20px;
+  padding:24px;
+  max-width:1100px;
+  margin:0 auto;
+}
+h1{margin-bottom:6px}
+p{color:#bbb}
+.panel{
+  background:#171717;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:16px;
+  margin:16px 0;
 }
 input,button{
-  padding:10px;
+  padding:12px;
   font-size:16px;
-  margin:5px 0;
+  border-radius:8px;
+  border:1px solid #444;
+}
+input{
+  width:320px;
+  max-width:100%;
+  background:#0b0b0b;
+  color:#fff;
 }
 button{
   cursor:pointer;
+  background:#fff;
+  color:#000;
+  font-weight:bold;
 }
 .result{
   padding:12px;
   border:1px solid #333;
-  border-radius:8px;
+  border-radius:10px;
   margin:10px 0;
-  background:#1a1a1a;
+  background:#1d1d1d;
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:center;
 }
-.result button{
-  margin-left:10px;
-}
+.result small{color:#aaa}
 video{
   width:100%;
-  max-width:700px;
+  max-width:760px;
   background:#000;
-  margin-top:20px;
+  margin-top:12px;
+  border-radius:12px;
 }
 #status{
   margin-top:12px;
   color:#bbb;
+}
+pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  max-height:280px;
+  overflow:auto;
+  background:#090909;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:12px;
+  color:#ddd;
 }
 </style>
 </head>
 <body>
 
 <h1>YMove Test</h1>
+<p>Temporary test page. This is only for confirming YMove search and video playback through Firebase Functions.</p>
 
-<p>This page tests YMove safely through Firebase Functions.</p>
+<div class="panel">
+  <input id="searchBox" placeholder="Search exercise, example: squat" value="squat">
+  <button onclick="searchExercises()">Search YMove</button>
+  <div id="status"></div>
+</div>
 
-<input id="searchBox" placeholder="Search exercise, example: squat" value="squat">
-<button onclick="searchExercises()">Search YMove</button>
+<div class="panel">
+  <h2>Results</h2>
+  <div id="results"></div>
+</div>
 
-<div id="status"></div>
-<div id="results"></div>
+<div class="panel">
+  <h2>Preview</h2>
+  <div id="selectedName"></div>
+  <video id="previewVideo" controls muted playsinline></video>
+</div>
 
-<h2>Preview</h2>
-<div id="selectedName"></div>
-<video id="previewVideo" controls muted playsinline></video>
+<div class="panel">
+  <h2>Raw Response Debug</h2>
+  <pre id="debugBox">Search something first.</pre>
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js"></script>
@@ -70,8 +116,6 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// This must match the region used in functions/index.js.
-// We used region: "us-central1".
 const functions = firebase.app().functions("us-central1");
 
 const searchYMoveExercises = functions.httpsCallable("searchYMoveExercises");
@@ -82,6 +126,11 @@ const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 const selectedNameEl = document.getElementById("selectedName");
 const previewVideo = document.getElementById("previewVideo");
+const debugBox = document.getElementById("debugBox");
+
+function showDebug(label, value) {
+  debugBox.textContent = label + "\n\n" + JSON.stringify(value, null, 2);
+}
 
 function getExerciseArray(apiResponse) {
   const data = apiResponse || {};
@@ -90,20 +139,47 @@ function getExerciseArray(apiResponse) {
   if (Array.isArray(data.exercises)) return data.exercises;
   if (Array.isArray(data.results)) return data.results;
   if (Array.isArray(data.data)) return data.data;
+  if (data.data && Array.isArray(data.data.exercises)) return data.data.exercises;
+  if (data.data && Array.isArray(data.data.results)) return data.data.results;
 
   return [];
 }
 
 function getExerciseId(exercise) {
-  return exercise.id || exercise.exerciseId || exercise.slug || "";
+  return exercise.id || exercise.exerciseId || exercise.slug || exercise._id || "";
 }
 
 function getExerciseName(exercise) {
-  return exercise.name || exercise.title || exercise.exerciseName || "Unnamed Exercise";
+  return exercise.title || exercise.name || exercise.displayName || exercise.exerciseName || "Unnamed Exercise";
 }
 
 function getVideoUrl(exercise) {
-  return exercise.videoUrl || exercise.video_url || exercise.video || "";
+  if (!exercise) return "";
+
+  if (typeof exercise.videoUrl === "string") return exercise.videoUrl;
+  if (typeof exercise.video_url === "string") return exercise.video_url;
+  if (typeof exercise.videoHlsUrl === "string") return exercise.videoHlsUrl;
+  if (typeof exercise.video_hls_url === "string") return exercise.video_hls_url;
+  if (typeof exercise.video === "string") return exercise.video;
+  if (typeof exercise.url === "string" && exercise.url.includes(".mp4")) return exercise.url;
+
+  if (Array.isArray(exercise.videos) && exercise.videos.length) {
+    const first = exercise.videos[0];
+    if (typeof first === "string") return first;
+    return first.videoUrl || first.url || first.src || first.hlsUrl || "";
+  }
+
+  if (exercise.videos && typeof exercise.videos === "object") {
+    return exercise.videos.mp4 ||
+           exercise.videos.videoUrl ||
+           exercise.videos.url ||
+           exercise.videos.hls ||
+           exercise.videos.hlsUrl ||
+           exercise.videos["720p"] ||
+           "";
+  }
+
+  return "";
 }
 
 async function searchExercises() {
@@ -117,15 +193,16 @@ async function searchExercises() {
   try {
     const response = await searchYMoveExercises({
       q,
-      limit: 25
+      limit: 25,
+      hasVideo: true
     });
 
-    console.log("Search response:", response.data);
+    showDebug("Search response:", response.data);
 
     const exercises = getExerciseArray(response.data);
 
     if (!exercises.length) {
-      statusEl.textContent = "No exercises found. Check console for response shape.";
+      statusEl.textContent = "No exercises found. Look at Raw Response Debug.";
       return;
     }
 
@@ -138,21 +215,24 @@ async function searchExercises() {
       const div = document.createElement("div");
       div.className = "result";
 
-      div.innerHTML = `
+      const info = document.createElement("div");
+      info.innerHTML = `
         <strong>${name}</strong><br>
-        <small>ID: ${id}</small>
+        <small>ID: ${id || "missing"}</small>
       `;
 
       const button = document.createElement("button");
       button.textContent = "Preview";
       button.onclick = () => previewExercise(id, name);
 
+      div.appendChild(info);
       div.appendChild(button);
       resultsEl.appendChild(div);
     });
 
   } catch (error) {
     console.error(error);
+    showDebug("Search error:", error);
     statusEl.textContent = "Error searching YMove: " + error.message;
   }
 }
@@ -170,12 +250,12 @@ async function previewExercise(id, name) {
     const response = await getYMoveExercise({ id });
     const exercise = response.data;
 
-    console.log("Exercise response:", exercise);
+    showDebug("Exercise detail response:", exercise);
 
     const videoUrl = getVideoUrl(exercise);
 
     if (!videoUrl) {
-      statusEl.textContent = "Exercise loaded, but no video URL was found. Check console for response shape.";
+      statusEl.textContent = "Exercise loaded, but no video URL was found. Raw response is shown below.";
       return;
     }
 
@@ -185,6 +265,7 @@ async function previewExercise(id, name) {
 
   } catch (error) {
     console.error(error);
+    showDebug("Preview error:", error);
     statusEl.textContent = "Error loading exercise: " + error.message;
   }
 }
