@@ -272,6 +272,11 @@ const firebaseUrlCache = {};
 const ymoveUrlCache = {};
 let renderToken = 0;
 
+function numberOrDefault(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 function emptyAction() {
   return {
     source: "firebase",
@@ -293,7 +298,7 @@ function defaultWorkoutConfig() {
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
-      breakSeconds: 60,
+      breakSeconds: 0,
       stations: [
         [emptyAction(), emptyAction()],
         [emptyAction(), emptyAction()],
@@ -395,17 +400,17 @@ function buildTimeline() {
   if (!config.loopBlocks && config.includeWarmup !== false) {
     segments.push({
       kind: "singleVideo",
-      duration: Number(config.warmupSeconds) || 180,
+      duration: numberOrDefault(config.warmupSeconds, 180),
       label: "WARMUP",
       item: normalizeAction(config.warmupPath || "")
     });
   }
 
   config.blocks.forEach((block, blockIndex) => {
-    const rounds = Number(block.rounds) || 3;
-    const workSeconds = Number(block.workSeconds) || 45;
-    const restSeconds = Number(block.restSeconds) || 15;
-    const breakSeconds = Number(block.breakSeconds) || 60;
+    const rounds = numberOrDefault(block.rounds, 3);
+    const workSeconds = numberOrDefault(block.workSeconds, 45);
+    const restSeconds = numberOrDefault(block.restSeconds, 15);
+    const breakSeconds = numberOrDefault(block.breakSeconds, 0);
 
     for (let roundIndex = 1; roundIndex <= rounds; roundIndex += 1) {
       segments.push({
@@ -442,7 +447,7 @@ function buildTimeline() {
   if (!config.loopBlocks && config.includeCooldown !== false) {
     segments.push({
       kind: "singleVideo",
-      duration: Number(config.cooldownSeconds) || 180,
+      duration: numberOrDefault(config.cooldownSeconds, 180),
       label: "STRETCH",
       item: normalizeAction(config.cooldownPath || "")
     });
