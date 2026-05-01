@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>YMove Search Module Test</title>
+<title>YMove Full Library Test</title>
 <style>
 :root{
   --bg:#0d0d0d;
@@ -11,29 +11,21 @@
   --line:#333;
   --muted:#aaa;
   --text:#fff;
-  --accent:#ffffff;
 }
 
-*{
-  box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
 body{
   font-family:Arial,sans-serif;
   background:var(--bg);
   color:var(--text);
   padding:24px;
-  max-width:1250px;
+  max-width:1300px;
   margin:0 auto;
 }
 
-h1,h2,h3{
-  margin-top:0;
-}
-
-p{
-  color:var(--muted);
-}
+h1,h2,h3{margin-top:0}
+p{color:var(--muted)}
 
 .panel{
   background:var(--panel);
@@ -108,7 +100,7 @@ button:disabled{
 
 .layout{
   display:grid;
-  grid-template-columns:1.2fr .8fr;
+  grid-template-columns:1.15fr .85fr;
   gap:16px;
 }
 
@@ -233,14 +225,14 @@ pre{
 </head>
 <body>
 
-<h1>YMove Search Module Test</h1>
+<h1>YMove Full Library Test</h1>
 <p>
-  This is a safe test page for the future workout builder. It does not save anything to your real workout config yet.
+  Temporary test page. This lets you search, preview, select Action A/B, or load the full YMove library.
 </p>
 
 <div class="panel">
   <h2>Mock Builder Slot</h2>
-  <p>Choose which action slot you are filling, then search and select a YMove exercise.</p>
+  <p>Choose which action slot you are filling, then search/select a YMove exercise.</p>
 
   <div class="slotGrid">
     <div id="slotA" class="slot active" onclick="setActiveSlot('A')">
@@ -260,12 +252,12 @@ pre{
 </div>
 
 <div class="panel">
-  <h2>Search YMove</h2>
+  <h2>Search / Browse YMove</h2>
 
   <div class="row">
     <div class="field">
       <label for="searchBox">Search</label>
-      <input id="searchBox" placeholder="squat, curl, plank, lunge..." value="squat">
+      <input id="searchBox" placeholder="squat, curl, plank, lunge..." value="">
     </div>
 
     <div class="field">
@@ -291,6 +283,16 @@ pre{
     <div class="field">
       <label>&nbsp;</label>
       <button onclick="newSearch()">Search</button>
+    </div>
+
+    <div class="field">
+      <label>&nbsp;</label>
+      <button class="secondary" onclick="loadFullLibrary()">Load Full Library</button>
+    </div>
+
+    <div class="field">
+      <label>&nbsp;</label>
+      <button class="danger" onclick="clearResults()">Clear Results</button>
     </div>
   </div>
 
@@ -384,15 +386,13 @@ let selectedSlots = {
 
 let currentPage = 1;
 let currentOffset = 0;
-let lastSearch = {
-  q: "",
-  difficulty: "",
-  equipment: "",
-  muscleGroup: ""
-};
-
 let lastResultCount = 0;
-const PAGE_SIZE = 20;
+
+const PAGE_SIZE = 50;
+const MAX_FULL_LIBRARY_PAGES = 30;
+
+let allLoadedExercises = [];
+let seenExerciseKeys = new Set();
 
 function setActiveSlot(slot) {
   activeSlot = slot;
@@ -405,6 +405,16 @@ function clearSlot(event, slot) {
   selectedSlots[slot] = null;
   renderSlots();
   renderSavedObject();
+}
+
+function clearResults() {
+  resultsEl.innerHTML = "";
+  allLoadedExercises = [];
+  seenExerciseKeys = new Set();
+  currentPage = 1;
+  currentOffset = 0;
+  loadMoreBtn.style.display = "none";
+  statusEl.textContent = "Results cleared.";
 }
 
 function showDebug(label, value) {
@@ -433,6 +443,10 @@ function getExerciseId(exercise) {
   return exercise.id || exercise.exerciseId || exercise.slug || exercise._id || "";
 }
 
+function getExerciseKey(exercise) {
+  return getExerciseId(exercise) || exercise.slug || exercise.title || JSON.stringify(exercise);
+}
+
 function getExerciseName(exercise) {
   return exercise.title || exercise.name || exercise.displayName || exercise.exerciseName || "Unnamed Exercise";
 }
@@ -451,7 +465,6 @@ function getExerciseMeta(exercise) {
 function getVideoUrl(exercise) {
   if (!exercise) return "";
 
-  // Prefer portrait / primary videos for the vertical screen system.
   if (Array.isArray(exercise.videos) && exercise.videos.length) {
     const portraitPrimary = exercise.videos.find(video =>
       video.orientation === "portrait" && video.isPrimary && video.videoUrl
@@ -537,6 +550,22 @@ function renderSavedObject() {
   savedObjectBox.textContent = JSON.stringify(futureStationObject, null, 2);
 }
 
+function addExercisesToMemory(exercises) {
+  const newExercises = [];
+
+  exercises.forEach(exercise => {
+    const key = getExerciseKey(exercise);
+
+    if (!seenExerciseKeys.has(key)) {
+      seenExerciseKeys.add(key);
+      allLoadedExercises.push(exercise);
+      newExercises.push(exercise);
+    }
+  });
+
+  return newExercises;
+}
+
 function renderResults(exercises, append = false) {
   if (!append) {
     resultsEl.innerHTML = "";
@@ -584,15 +613,9 @@ function renderResults(exercises, append = false) {
     useBButton.textContent = "Use for B";
     useBButton.onclick = () => chooseExercise("B", exercise);
 
-    const useActiveButton = document.createElement("button");
-    useActiveButton.className = "secondary";
-    useActiveButton.textContent = `Use for Active (${activeSlot})`;
-    useActiveButton.onclick = () => chooseExercise(activeSlot, exercise);
-
     actions.appendChild(previewBtn);
     actions.appendChild(useAButton);
     actions.appendChild(useBButton);
-    actions.appendChild(useActiveButton);
 
     div.appendChild(actions);
     resultsEl.appendChild(div);
@@ -622,14 +645,8 @@ function getSearchPayload() {
 async function newSearch() {
   currentPage = 1;
   currentOffset = 0;
-
-  lastSearch = {
-    q: searchBox.value.trim(),
-    difficulty: difficultyFilter.value.trim(),
-    equipment: equipmentFilter.value.trim(),
-    muscleGroup: muscleFilter.value.trim()
-  };
-
+  allLoadedExercises = [];
+  seenExerciseKeys = new Set();
   await runSearch(false);
 }
 
@@ -639,11 +656,79 @@ async function loadMore() {
   await runSearch(true);
 }
 
+async function loadFullLibrary() {
+  clearResults();
+
+  searchBox.value = "";
+  difficultyFilter.value = "";
+  equipmentFilter.value = "";
+  muscleFilter.value = "";
+
+  statusEl.textContent = "Loading full YMove library...";
+  loadMoreBtn.style.display = "none";
+
+  let totalNew = 0;
+  let emptyOrDuplicatePages = 0;
+
+  for (let page = 1; page <= MAX_FULL_LIBRARY_PAGES; page += 1) {
+    currentPage = page;
+    currentOffset = (page - 1) * PAGE_SIZE;
+
+    statusEl.textContent = `Loading full library... page ${page}, loaded ${allLoadedExercises.length} unique exercises so far.`;
+
+    try {
+      const response = await searchYMoveExercises({
+        q: "",
+        limit: PAGE_SIZE,
+        page: currentPage,
+        offset: currentOffset,
+        hasVideo: true
+      });
+
+      const exercises = getExerciseArray(response.data);
+      showDebug(`Full library page ${page} response:`, response.data);
+
+      if (!exercises.length) {
+        break;
+      }
+
+      const newExercises = addExercisesToMemory(exercises);
+      totalNew += newExercises.length;
+
+      if (newExercises.length === 0) {
+        emptyOrDuplicatePages += 1;
+      } else {
+        emptyOrDuplicatePages = 0;
+        renderResults(newExercises, true);
+      }
+
+      if (exercises.length < PAGE_SIZE) {
+        break;
+      }
+
+      if (emptyOrDuplicatePages >= 2) {
+        statusEl.textContent = "Stopped because YMove returned duplicate pages.";
+        break;
+      }
+
+    } catch (error) {
+      console.error(error);
+      showDebug("Full library load error:", error);
+      statusEl.textContent = "Error loading full library: " + error.message;
+      return;
+    }
+  }
+
+  statusEl.textContent = `Full library loaded: ${allLoadedExercises.length} unique exercises shown.`;
+}
+
 async function runSearch(append) {
   statusEl.textContent = append ? "Loading more..." : "Searching...";
 
   if (!append) {
     resultsEl.innerHTML = "";
+    allLoadedExercises = [];
+    seenExerciseKeys = new Set();
     previewVideo.removeAttribute("src");
     selectedNameEl.textContent = "No preview selected";
     previewMeta.textContent = "";
@@ -658,26 +743,26 @@ async function runSearch(append) {
     showDebug("Search response:", response.data);
 
     const exercises = getExerciseArray(response.data);
+    const newExercises = addExercisesToMemory(exercises);
+
     lastResultCount = exercises.length;
 
-    if (!exercises.length && !append) {
-      statusEl.textContent = "No exercises found. Try a different search.";
+    if (!newExercises.length && !append) {
+      statusEl.textContent = "No new exercises found.";
       return;
     }
 
-    if (!exercises.length && append) {
-      statusEl.textContent = "No more results found.";
+    if (!newExercises.length && append) {
+      statusEl.textContent = "No more new results found.";
       return;
     }
 
-    renderResults(exercises, append);
+    renderResults(newExercises, append);
 
     statusEl.textContent = append
-      ? `Loaded ${exercises.length} more exercises.`
-      : `Found ${exercises.length} exercises.`;
+      ? `Loaded ${newExercises.length} more new exercises. Total shown: ${allLoadedExercises.length}.`
+      : `Found ${newExercises.length} exercises.`;
 
-    // If the API keeps returning a full page, show Load More.
-    // If YMove ignores pagination, we may see repeats. This is just for testing.
     if (exercises.length >= PAGE_SIZE) {
       loadMoreBtn.style.display = "inline-block";
     }
