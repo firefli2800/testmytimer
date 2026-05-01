@@ -2,70 +2,202 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>YMove Test</title>
+<title>YMove Search Module Test</title>
 <style>
+:root{
+  --bg:#0d0d0d;
+  --panel:#171717;
+  --panel2:#101010;
+  --line:#333;
+  --muted:#aaa;
+  --text:#fff;
+  --accent:#ffffff;
+}
+
+*{
+  box-sizing:border-box;
+}
+
 body{
   font-family:Arial,sans-serif;
-  background:#0f0f0f;
-  color:#fff;
+  background:var(--bg);
+  color:var(--text);
   padding:24px;
-  max-width:1100px;
+  max-width:1250px;
   margin:0 auto;
 }
-h1{margin-bottom:6px}
-p{color:#bbb}
+
+h1,h2,h3{
+  margin-top:0;
+}
+
+p{
+  color:var(--muted);
+}
+
 .panel{
-  background:#171717;
-  border:1px solid #333;
-  border-radius:12px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:14px;
   padding:16px;
   margin:16px 0;
 }
-input,button{
+
+.row{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:end;
+}
+
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+label{
+  font-size:13px;
+  color:#ccc;
+}
+
+input,button,select{
   padding:12px;
   font-size:16px;
   border-radius:8px;
   border:1px solid #444;
 }
-input{
-  width:320px;
-  max-width:100%;
+
+input,select{
   background:#0b0b0b;
   color:#fff;
 }
+
+input{
+  min-width:280px;
+}
+
 button{
   cursor:pointer;
   background:#fff;
   color:#000;
   font-weight:bold;
 }
-.result{
-  padding:12px;
-  border:1px solid #333;
-  border-radius:10px;
-  margin:10px 0;
-  background:#1d1d1d;
-  display:flex;
-  justify-content:space-between;
-  gap:16px;
-  align-items:center;
+
+button.secondary{
+  background:#222;
+  color:#fff;
+  border:1px solid #555;
 }
-.result small{color:#aaa}
-video{
-  width:100%;
-  max-width:760px;
-  background:#000;
-  margin-top:12px;
-  border-radius:12px;
+
+button.danger{
+  background:#341111;
+  color:#fff;
+  border:1px solid #8a3333;
 }
+
+button:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
 #status{
   margin-top:12px;
   color:#bbb;
 }
+
+.layout{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:16px;
+}
+
+.resultsGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:12px;
+}
+
+.result{
+  padding:12px;
+  border:1px solid #333;
+  border-radius:10px;
+  background:#1d1d1d;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.resultTitle{
+  font-weight:bold;
+  font-size:17px;
+}
+
+.resultMeta{
+  color:#aaa;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.resultActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.videoBox{
+  background:#000;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid #333;
+}
+
+video{
+  width:100%;
+  display:block;
+  background:#000;
+}
+
+.slotGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+
+.slot{
+  background:var(--panel2);
+  border:1px solid #333;
+  border-radius:12px;
+  padding:14px;
+  min-height:150px;
+}
+
+.slot.active{
+  border:2px solid #fff;
+}
+
+.slotTitle{
+  font-size:22px;
+  font-weight:bold;
+  margin-bottom:8px;
+}
+
+.slotExercise{
+  font-size:18px;
+  font-weight:bold;
+  margin-bottom:6px;
+}
+
+.slotMeta{
+  color:#aaa;
+  font-size:13px;
+  line-height:1.35;
+}
+
 pre{
   white-space:pre-wrap;
   word-break:break-word;
-  max-height:280px;
+  max-height:320px;
   overflow:auto;
   background:#090909;
   border:1px solid #333;
@@ -73,33 +205,133 @@ pre{
   padding:12px;
   color:#ddd;
 }
+
+.badge{
+  display:inline-block;
+  padding:3px 7px;
+  background:#252525;
+  border:1px solid #444;
+  border-radius:999px;
+  color:#ccc;
+  font-size:12px;
+  margin-right:4px;
+  margin-top:4px;
+}
+
+.previewTitle{
+  font-size:20px;
+  font-weight:bold;
+  margin-bottom:8px;
+}
+
+@media(max-width:900px){
+  .layout{
+    grid-template-columns:1fr;
+  }
+}
 </style>
 </head>
 <body>
 
-<h1>YMove Test</h1>
-<p>Temporary test page. This confirms YMove search and video playback through Firebase Functions.</p>
+<h1>YMove Search Module Test</h1>
+<p>
+  This is a safe test page for the future workout builder. It does not save anything to your real workout config yet.
+</p>
 
 <div class="panel">
-  <input id="searchBox" placeholder="Search exercise, example: squat" value="squat">
-  <button onclick="searchExercises()">Search YMove</button>
+  <h2>Mock Builder Slot</h2>
+  <p>Choose which action slot you are filling, then search and select a YMove exercise.</p>
+
+  <div class="slotGrid">
+    <div id="slotA" class="slot active" onclick="setActiveSlot('A')">
+      <div class="slotTitle">Action A</div>
+      <div id="slotAName" class="slotExercise">Nothing selected</div>
+      <div id="slotAMeta" class="slotMeta">Click a YMove result and choose “Use for Action A.”</div>
+      <button class="danger" onclick="clearSlot(event,'A')">Clear Action A</button>
+    </div>
+
+    <div id="slotB" class="slot" onclick="setActiveSlot('B')">
+      <div class="slotTitle">Action B</div>
+      <div id="slotBName" class="slotExercise">Nothing selected</div>
+      <div id="slotBMeta" class="slotMeta">Click a YMove result and choose “Use for Action B.”</div>
+      <button class="danger" onclick="clearSlot(event,'B')">Clear Action B</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Search YMove</h2>
+
+  <div class="row">
+    <div class="field">
+      <label for="searchBox">Search</label>
+      <input id="searchBox" placeholder="squat, curl, plank, lunge..." value="squat">
+    </div>
+
+    <div class="field">
+      <label for="difficultyFilter">Difficulty</label>
+      <select id="difficultyFilter">
+        <option value="">Any</option>
+        <option value="beginner">Beginner</option>
+        <option value="intermediate">Intermediate</option>
+        <option value="advanced">Advanced</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="equipmentFilter">Equipment</label>
+      <input id="equipmentFilter" placeholder="dumbbell, bodyweight...">
+    </div>
+
+    <div class="field">
+      <label for="muscleFilter">Muscle</label>
+      <input id="muscleFilter" placeholder="biceps, legs, chest...">
+    </div>
+
+    <div class="field">
+      <label>&nbsp;</label>
+      <button onclick="newSearch()">Search</button>
+    </div>
+  </div>
+
   <div id="status"></div>
 </div>
 
-<div class="panel">
-  <h2>Results</h2>
-  <div id="results"></div>
-</div>
+<div class="layout">
+  <div>
+    <div class="panel">
+      <h2>Results</h2>
+      <div id="results" class="resultsGrid"></div>
 
-<div class="panel">
-  <h2>Preview</h2>
-  <div id="selectedName"></div>
-  <video id="previewVideo" controls muted playsinline></video>
-</div>
+      <button id="loadMoreBtn" class="secondary" onclick="loadMore()" style="display:none;margin-top:16px;">
+        Load More
+      </button>
+    </div>
+  </div>
 
-<div class="panel">
-  <h2>Raw Response Debug</h2>
-  <pre id="debugBox">Search something first.</pre>
+  <div>
+    <div class="panel">
+      <h2>Preview</h2>
+      <div id="selectedName" class="previewTitle">No preview selected</div>
+
+      <div class="videoBox">
+        <video id="previewVideo" controls muted playsinline></video>
+      </div>
+
+      <div id="previewMeta" style="margin-top:10px;color:#aaa;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Future Saved Object</h2>
+      <p>This is the type of object we would later save into your real builder config.</p>
+      <pre id="savedObjectBox">{}</pre>
+    </div>
+
+    <div class="panel">
+      <h2>Raw Debug</h2>
+      <pre id="debugBox">Search something first.</pre>
+    </div>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -122,11 +354,58 @@ const searchYMoveExercises = functions.httpsCallable("searchYMoveExercises");
 const getYMoveExercise = functions.httpsCallable("getYMoveExercise");
 
 const searchBox = document.getElementById("searchBox");
+const difficultyFilter = document.getElementById("difficultyFilter");
+const equipmentFilter = document.getElementById("equipmentFilter");
+const muscleFilter = document.getElementById("muscleFilter");
+
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
+const loadMoreBtn = document.getElementById("loadMoreBtn");
+
 const selectedNameEl = document.getElementById("selectedName");
 const previewVideo = document.getElementById("previewVideo");
+const previewMeta = document.getElementById("previewMeta");
+
 const debugBox = document.getElementById("debugBox");
+const savedObjectBox = document.getElementById("savedObjectBox");
+
+const slotA = document.getElementById("slotA");
+const slotB = document.getElementById("slotB");
+const slotAName = document.getElementById("slotAName");
+const slotBName = document.getElementById("slotBName");
+const slotAMeta = document.getElementById("slotAMeta");
+const slotBMeta = document.getElementById("slotBMeta");
+
+let activeSlot = "A";
+let selectedSlots = {
+  A: null,
+  B: null
+};
+
+let currentPage = 1;
+let currentOffset = 0;
+let lastSearch = {
+  q: "",
+  difficulty: "",
+  equipment: "",
+  muscleGroup: ""
+};
+
+let lastResultCount = 0;
+const PAGE_SIZE = 20;
+
+function setActiveSlot(slot) {
+  activeSlot = slot;
+  slotA.classList.toggle("active", slot === "A");
+  slotB.classList.toggle("active", slot === "B");
+}
+
+function clearSlot(event, slot) {
+  event.stopPropagation();
+  selectedSlots[slot] = null;
+  renderSlots();
+  renderSavedObject();
+}
 
 function showDebug(label, value) {
   debugBox.textContent = label + "\n\n" + JSON.stringify(value, null, 2);
@@ -134,10 +413,6 @@ function showDebug(label, value) {
 
 function unwrapApiData(apiResponse) {
   if (!apiResponse) return apiResponse;
-
-  // Firebase callable response gives us response.data.
-  // YMove also wraps its response inside data.
-  // So sometimes the actual object is response.data.data.
   return apiResponse.data || apiResponse;
 }
 
@@ -160,6 +435,17 @@ function getExerciseId(exercise) {
 
 function getExerciseName(exercise) {
   return exercise.title || exercise.name || exercise.displayName || exercise.exerciseName || "Unnamed Exercise";
+}
+
+function getExerciseMeta(exercise) {
+  const parts = [];
+
+  if (exercise.category) parts.push(exercise.category);
+  if (exercise.muscleGroup) parts.push(exercise.muscleGroup);
+  if (exercise.equipment) parts.push(exercise.equipment);
+  if (exercise.difficulty) parts.push(exercise.difficulty);
+
+  return parts.filter(Boolean).join(" • ");
 }
 
 function getVideoUrl(exercise) {
@@ -190,7 +476,6 @@ function getVideoUrl(exercise) {
     if (firstWithUrl) return firstWithUrl.videoUrl;
   }
 
-  // Fallbacks.
   if (typeof exercise.videoUrl === "string") return exercise.videoUrl;
   if (typeof exercise.video_url === "string") return exercise.video_url;
   if (typeof exercise.videoHlsUrl === "string") return exercise.videoHlsUrl;
@@ -200,53 +485,202 @@ function getVideoUrl(exercise) {
   return "";
 }
 
-async function searchExercises() {
-  const q = searchBox.value.trim();
+function makeBuilderItem(exercise) {
+  return {
+    source: "ymove",
+    exerciseId: getExerciseId(exercise),
+    name: getExerciseName(exercise),
+    meta: {
+      category: exercise.category || "",
+      muscleGroup: exercise.muscleGroup || "",
+      equipment: exercise.equipment || "",
+      difficulty: exercise.difficulty || "",
+      slug: exercise.slug || ""
+    }
+  };
+}
 
-  statusEl.textContent = "Searching...";
-  resultsEl.innerHTML = "";
-  previewVideo.removeAttribute("src");
-  selectedNameEl.textContent = "";
+function renderSlots() {
+  if (selectedSlots.A) {
+    slotAName.textContent = selectedSlots.A.name;
+    slotAMeta.textContent = [
+      selectedSlots.A.meta.category,
+      selectedSlots.A.meta.muscleGroup,
+      selectedSlots.A.meta.equipment,
+      selectedSlots.A.meta.difficulty
+    ].filter(Boolean).join(" • ") || "YMove exercise";
+  } else {
+    slotAName.textContent = "Nothing selected";
+    slotAMeta.textContent = "Click a YMove result and choose “Use for Action A.”";
+  }
+
+  if (selectedSlots.B) {
+    slotBName.textContent = selectedSlots.B.name;
+    slotBMeta.textContent = [
+      selectedSlots.B.meta.category,
+      selectedSlots.B.meta.muscleGroup,
+      selectedSlots.B.meta.equipment,
+      selectedSlots.B.meta.difficulty
+    ].filter(Boolean).join(" • ") || "YMove exercise";
+  } else {
+    slotBName.textContent = "Nothing selected";
+    slotBMeta.textContent = "Click a YMove result and choose “Use for Action B.”";
+  }
+}
+
+function renderSavedObject() {
+  const futureStationObject = [
+    selectedSlots.A,
+    selectedSlots.B
+  ];
+
+  savedObjectBox.textContent = JSON.stringify(futureStationObject, null, 2);
+}
+
+function renderResults(exercises, append = false) {
+  if (!append) {
+    resultsEl.innerHTML = "";
+  }
+
+  exercises.forEach(exercise => {
+    const id = getExerciseId(exercise);
+    const name = getExerciseName(exercise);
+    const meta = getExerciseMeta(exercise);
+
+    const div = document.createElement("div");
+    div.className = "result";
+
+    const badges = [
+      exercise.category,
+      exercise.muscleGroup,
+      exercise.equipment,
+      exercise.difficulty
+    ].filter(Boolean).map(item => `<span class="badge">${item}</span>`).join("");
+
+    div.innerHTML = `
+      <div>
+        <div class="resultTitle">${name}</div>
+        <div class="resultMeta">
+          ID: ${id || "missing"}<br>
+          ${meta || "No metadata"}
+        </div>
+        <div>${badges}</div>
+      </div>
+    `;
+
+    const actions = document.createElement("div");
+    actions.className = "resultActions";
+
+    const previewBtn = document.createElement("button");
+    previewBtn.className = "secondary";
+    previewBtn.textContent = "Preview";
+    previewBtn.onclick = () => previewExercise(id, name);
+
+    const useAButton = document.createElement("button");
+    useAButton.textContent = "Use for A";
+    useAButton.onclick = () => chooseExercise("A", exercise);
+
+    const useBButton = document.createElement("button");
+    useBButton.textContent = "Use for B";
+    useBButton.onclick = () => chooseExercise("B", exercise);
+
+    const useActiveButton = document.createElement("button");
+    useActiveButton.className = "secondary";
+    useActiveButton.textContent = `Use for Active (${activeSlot})`;
+    useActiveButton.onclick = () => chooseExercise(activeSlot, exercise);
+
+    actions.appendChild(previewBtn);
+    actions.appendChild(useAButton);
+    actions.appendChild(useBButton);
+    actions.appendChild(useActiveButton);
+
+    div.appendChild(actions);
+    resultsEl.appendChild(div);
+  });
+}
+
+function chooseExercise(slot, exercise) {
+  selectedSlots[slot] = makeBuilderItem(exercise);
+  setActiveSlot(slot === "A" ? "B" : "A");
+  renderSlots();
+  renderSavedObject();
+}
+
+function getSearchPayload() {
+  return {
+    q: searchBox.value.trim(),
+    limit: PAGE_SIZE,
+    page: currentPage,
+    offset: currentOffset,
+    difficulty: difficultyFilter.value.trim(),
+    equipment: equipmentFilter.value.trim(),
+    muscleGroup: muscleFilter.value.trim(),
+    hasVideo: true
+  };
+}
+
+async function newSearch() {
+  currentPage = 1;
+  currentOffset = 0;
+
+  lastSearch = {
+    q: searchBox.value.trim(),
+    difficulty: difficultyFilter.value.trim(),
+    equipment: equipmentFilter.value.trim(),
+    muscleGroup: muscleFilter.value.trim()
+  };
+
+  await runSearch(false);
+}
+
+async function loadMore() {
+  currentPage += 1;
+  currentOffset += PAGE_SIZE;
+  await runSearch(true);
+}
+
+async function runSearch(append) {
+  statusEl.textContent = append ? "Loading more..." : "Searching...";
+
+  if (!append) {
+    resultsEl.innerHTML = "";
+    previewVideo.removeAttribute("src");
+    selectedNameEl.textContent = "No preview selected";
+    previewMeta.textContent = "";
+  }
+
+  loadMoreBtn.style.display = "none";
 
   try {
-    const response = await searchYMoveExercises({
-      q,
-      limit: 25,
-      hasVideo: true
-    });
+    const payload = getSearchPayload();
+    const response = await searchYMoveExercises(payload);
 
     showDebug("Search response:", response.data);
 
     const exercises = getExerciseArray(response.data);
+    lastResultCount = exercises.length;
 
-    if (!exercises.length) {
-      statusEl.textContent = "No exercises found. Look at Raw Response Debug.";
+    if (!exercises.length && !append) {
+      statusEl.textContent = "No exercises found. Try a different search.";
       return;
     }
 
-    statusEl.textContent = `Found ${exercises.length} exercises.`;
+    if (!exercises.length && append) {
+      statusEl.textContent = "No more results found.";
+      return;
+    }
 
-    exercises.forEach(exercise => {
-      const id = getExerciseId(exercise);
-      const name = getExerciseName(exercise);
+    renderResults(exercises, append);
 
-      const div = document.createElement("div");
-      div.className = "result";
+    statusEl.textContent = append
+      ? `Loaded ${exercises.length} more exercises.`
+      : `Found ${exercises.length} exercises.`;
 
-      const info = document.createElement("div");
-      info.innerHTML = `
-        <strong>${name}</strong><br>
-        <small>ID: ${id || "missing"}</small>
-      `;
-
-      const button = document.createElement("button");
-      button.textContent = "Preview";
-      button.onclick = () => previewExercise(id, name);
-
-      div.appendChild(info);
-      div.appendChild(button);
-      resultsEl.appendChild(div);
-    });
+    // If the API keeps returning a full page, show Load More.
+    // If YMove ignores pagination, we may see repeats. This is just for testing.
+    if (exercises.length >= PAGE_SIZE) {
+      loadMoreBtn.style.display = "inline-block";
+    }
 
   } catch (error) {
     console.error(error);
@@ -263,13 +697,11 @@ async function previewExercise(id, name) {
 
   statusEl.textContent = "Loading preview...";
   selectedNameEl.textContent = name;
+  previewMeta.textContent = "";
 
   try {
     const response = await getYMoveExercise({ id });
 
-    // This is the important fix:
-    // response.data is the Firebase callable response body.
-    // response.data.data is the actual YMove exercise.
     const exerciseResponse = response.data;
     const exercise = unwrapApiData(exerciseResponse);
 
@@ -284,6 +716,12 @@ async function previewExercise(id, name) {
 
     previewVideo.src = videoUrl;
     previewVideo.load();
+
+    previewMeta.innerHTML = `
+      <div>${getExerciseMeta(exercise) || "No metadata"}</div>
+      <div style="margin-top:6px;">Video source: YMove</div>
+    `;
+
     statusEl.textContent = "Preview loaded.";
 
   } catch (error) {
@@ -292,6 +730,15 @@ async function previewExercise(id, name) {
     statusEl.textContent = "Error loading exercise: " + error.message;
   }
 }
+
+searchBox.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    newSearch();
+  }
+});
+
+renderSlots();
+renderSavedObject();
 </script>
 
 </body>
