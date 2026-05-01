@@ -64,6 +64,7 @@ function defaultWorkoutConfig() {
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
+      includeBreak: true,
       breakSeconds: 60
     }))
   };
@@ -98,6 +99,11 @@ function normalizeConfig(config) {
   return normalized;
 }
 
+function getNumberOrDefault(value, fallback) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
 function buildDurations() {
   const config = workoutConfig || defaultWorkoutConfig();
   const durations = [];
@@ -107,14 +113,14 @@ function buildDurations() {
     It intentionally skips warmup and cooldown.
   */
   if (!config.loopBlocks && config.includeWarmup !== false) {
-    durations.push(Number(config.warmupSeconds) || 180);
+    durations.push(getNumberOrDefault(config.warmupSeconds, 180));
   }
 
   config.blocks.forEach(block => {
-    const rounds = Number(block.rounds) || 3;
-    const workSeconds = Number(block.workSeconds) || 45;
-    const restSeconds = Number(block.restSeconds) || 15;
-    const breakSeconds = Number(block.breakSeconds) || 60;
+    const rounds = getNumberOrDefault(block.rounds, 3);
+    const workSeconds = getNumberOrDefault(block.workSeconds, 45);
+    const restSeconds = getNumberOrDefault(block.restSeconds, 15);
+    const breakSeconds = getNumberOrDefault(block.breakSeconds, 60);
 
     for (let i = 0; i < rounds; i += 1) {
       durations.push(workSeconds);
@@ -130,7 +136,7 @@ function buildDurations() {
   });
 
   if (!config.loopBlocks && config.includeCooldown !== false) {
-    durations.push(Number(config.cooldownSeconds) || 180);
+    durations.push(getNumberOrDefault(config.cooldownSeconds, 180));
   }
 
   return durations;
