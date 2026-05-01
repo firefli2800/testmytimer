@@ -19,8 +19,8 @@ html,body{
   Windows / browser can stay landscape.
   This rotated stage creates a portrait screen inside the landscape browser.
 
-  If the display is rotated the wrong direction, change rotate(90deg)
-  to rotate(-90deg) in #rotateStage.
+  If the display is rotated the wrong direction, change rotate(-90deg)
+  to rotate(90deg) in #rotateStage.
 */
 #rotateStage{
   position:fixed;
@@ -255,6 +255,7 @@ function defaultWorkoutConfig() {
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
+      includeBreak: true,
       breakSeconds: 60,
       stations: [
         ["", ""],
@@ -315,6 +316,11 @@ function normalizeConfig(config) {
   return normalized;
 }
 
+function getNumberOrDefault(value, fallback) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
 function buildTimeline() {
   const config = workoutConfig || defaultWorkoutConfig();
   const segments = [];
@@ -326,17 +332,17 @@ function buildTimeline() {
   if (!config.loopBlocks && config.includeWarmup !== false) {
     segments.push({
       kind: "singleVideo",
-      duration: Number(config.warmupSeconds) || 180,
+      duration: getNumberOrDefault(config.warmupSeconds, 180),
       label: "WARMUP",
       directVideoConfigKey: "warmupPath"
     });
   }
 
   config.blocks.forEach((block, blockIndex) => {
-    const rounds = Number(block.rounds) || 3;
-    const workSeconds = Number(block.workSeconds) || 45;
-    const restSeconds = Number(block.restSeconds) || 15;
-    const breakSeconds = Number(block.breakSeconds) || 60;
+    const rounds = getNumberOrDefault(block.rounds, 3);
+    const workSeconds = getNumberOrDefault(block.workSeconds, 45);
+    const restSeconds = getNumberOrDefault(block.restSeconds, 15);
+    const breakSeconds = getNumberOrDefault(block.breakSeconds, 60);
 
     for (let roundIndex = 1; roundIndex <= rounds; roundIndex += 1) {
       segments.push({
@@ -373,7 +379,7 @@ function buildTimeline() {
   if (!config.loopBlocks && config.includeCooldown !== false) {
     segments.push({
       kind: "singleVideo",
-      duration: Number(config.cooldownSeconds) || 180,
+      duration: getNumberOrDefault(config.cooldownSeconds, 180),
       label: "STRETCH",
       directVideoConfigKey: "cooldownPath"
     });
