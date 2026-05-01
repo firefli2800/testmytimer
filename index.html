@@ -703,17 +703,27 @@ async function buildMediaRequest(info) {
   const { index, segment, segmentElapsedMs, finished } = info;
   const remain = Math.max(0, segment.duration - Math.floor(segmentElapsedMs / 1000));
 
-  if (segment.kind === "rest") {
-    const breakSeconds = getBlockBreakSeconds(segment.blockIndex);
+if (segment.kind === "rest") {
+  const breakSeconds = getBlockBreakSeconds(segment.blockIndex);
 
-    /*
-      If this block has no dedicated break screen, REST becomes the NEXT UP preview screen.
-      If this block has a break screen, REST stays simple and the break handles NEXT UP.
-    */
-    if (breakSeconds <= 0) {
-      const nextUp = await buildNextUpRequest(index, segment, remain, finished);
-      if (nextUp) return nextUp;
-    }
+  /*
+    If this block has no dedicated break screen, REST stays as REST first,
+    then becomes NEXT UP only during the final 10 seconds.
+  */
+  if (breakSeconds <= 0 && remain <= 10) {
+    const nextUp = await buildNextUpRequest(index, segment, remain, finished);
+    if (nextUp) return nextUp;
+  }
+
+  return {
+    mode: "none",
+    centerText: "REST",
+    upcoming: false,
+    labelText: "REST",
+    segment,
+    remain
+  };
+}
 
     return {
       mode: "none",
