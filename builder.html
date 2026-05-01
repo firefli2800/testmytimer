@@ -25,7 +25,7 @@ h1,h2,h3{margin-top:0}
 }
 .timingGrid{
   display:grid;
-  grid-template-columns:repeat(4,minmax(120px,1fr));
+  grid-template-columns:repeat(5,minmax(120px,1fr));
   gap:12px;
   margin-bottom:16px;
 }
@@ -59,6 +59,15 @@ h1,h2,h3{margin-top:0}
   cursor:pointer;
 }
 .checkboxCard input{
+  width:auto;
+}
+.breakToggle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:26px;
+}
+.breakToggle input{
   width:auto;
 }
 label{
@@ -96,7 +105,7 @@ small{color:#bbb}
 <body>
 
 <h1>Workout Builder</h1>
-<small>Pick warmup, cooldown, 2 actions per station, custom timing, and class mode.</small>
+<small>Pick warmup, cooldown, 2 actions per station, custom timing, breaks, and class mode.</small>
 
 <div class="section">
   <h2>Workout Mode</h2>
@@ -225,6 +234,7 @@ function defaultWorkoutConfig() {
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
+      includeBreak: true,
       breakSeconds: 60,
       stations: [
         ["", ""],
@@ -254,6 +264,8 @@ function normalizeConfig(config) {
     if (Array.isArray(oldBlock)) {
       normalized.blocks.push({
         ...base.blocks[i],
+        includeBreak: true,
+        breakSeconds: 60,
         stations: [
           [oldBlock[0] || "", ""],
           [oldBlock[1] || "", ""],
@@ -261,9 +273,14 @@ function normalizeConfig(config) {
         ]
       });
     } else {
+      const savedBreakSeconds = Number(oldBlock?.breakSeconds);
+      const hasBreak = Number.isFinite(savedBreakSeconds) ? savedBreakSeconds > 0 : true;
+
       normalized.blocks.push({
         ...base.blocks[i],
         ...(oldBlock || {}),
+        includeBreak: oldBlock?.includeBreak !== undefined ? oldBlock.includeBreak : hasBreak,
+        breakSeconds: Number.isFinite(savedBreakSeconds) ? savedBreakSeconds : base.blocks[i].breakSeconds,
         stations: [
           [
             oldBlock?.stations?.[0]?.[0] || "",
@@ -327,6 +344,11 @@ function buildBlocksUI() {
         <div>
           <label for="block_${block}_breakSeconds">Break Seconds After Block</label>
           <input id="block_${block}_breakSeconds" type="number" min="0" value="60" oninput="updateTotalTime()">
+        </div>
+
+        <div class="breakToggle">
+          <input id="block_${block}_includeBreak" type="checkbox" checked onchange="toggleBreakInput(${block}); updateTotalTime();">
+          <label for="block_${block}_includeBreak">Include Break After Block</label>
         </div>
       </div>
 
@@ -404,6 +426,10 @@ function renderBuilder() {
     document.getElementById(`block_${block}_rounds`).value = blockConfig.rounds;
     document.getElementById(`block_${block}_breakSeconds`).value = blockConfig.breakSeconds;
 
+    const includeBreakInput = document.getElementById(`block_${block}_includeBreak`);
+    includeBreakInput.checked = blockConfig.includeBreak !== false && Number(blockConfig.breakSeconds) > 0;
+    toggleBreakInput(block);
+
     for (let station = 0; station < 3; station += 1) {
       for (let action = 0; action < 2; action += 1) {
         const select = document.getElementById(`block_${block}_station_${station}_action_${action}`);
@@ -414,6 +440,16 @@ function renderBuilder() {
   }
 
   updateTotalTime();
+}
+
+function toggleBreakInput(block) {
+  const includeBreakInput = document.getElementById(`block_${block}_includeBreak`);
+  const breakSecondsInput = document.getElementById(`block_${block}_breakSeconds`);
+
+  if (!includeBreakInput || !breakSecondsInput) return;
+
+  breakSecondsInput.disabled = !includeBreakInput.checked;
+  breakSecondsInput.style.opacity = includeBreakInput.checked ? "1" : ".45";
 }
 
 function copyBlockToNext(block) {
@@ -444,6 +480,11 @@ function copyBlockValues(sourceBlock, targetBlock) {
   document.getElementById(`block_${targetBlock}_breakSeconds`).value =
     document.getElementById(`block_${sourceBlock}_breakSeconds`).value;
 
+  document.getElementById(`block_${targetBlock}_includeBreak`).checked =
+    document.getElementById(`block_${sourceBlock}_includeBreak`).checked;
+
+  toggleBreakInput(targetBlock);
+
   for (let station = 0; station < 3; station += 1) {
     for (let action = 0; action < 2; action += 1) {
       const source = document.getElementById(`block_${sourceBlock}_station_${station}_action_${action}`);
@@ -456,6 +497,14 @@ function copyBlockValues(sourceBlock, targetBlock) {
 function getNumberValue(id, fallback) {
   const value = Number(document.getElementById(id).value);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function getBreakSecondsForBlock(block) {
+  const includeBreak = document.getElementById(`block_${block}_includeBreak`).checked;
+
+  if (!includeBreak) return 0;
+
+  return getNumberValue(`block_${block}_breakSeconds`, 60);
 }
 
 function calculateTotalSecondsFromForm() {
@@ -473,7 +522,7 @@ function calculateTotalSecondsFromForm() {
     const workSeconds = getNumberValue(`block_${block}_workSeconds`, 45);
     const restSeconds = getNumberValue(`block_${block}_restSeconds`, 15);
     const rounds = getNumberValue(`block_${block}_rounds`, 3);
-    const breakSeconds = getNumberValue(`block_${block}_breakSeconds`, 60);
+    const breakSeconds = getBreakSecondsForBlock(block);
 
     total += ((workSeconds + restSeconds) * rounds) + breakSeconds;
   }
@@ -517,7 +566,8 @@ function saveWorkout() {
     const workSeconds = getNumberValue(`block_${block}_workSeconds`, 45);
     const restSeconds = getNumberValue(`block_${block}_restSeconds`, 15);
     const rounds = getNumberValue(`block_${block}_rounds`, 3);
-    const breakSeconds = getNumberValue(`block_${block}_breakSeconds`, 60);
+    const includeBreak = document.getElementById(`block_${block}_includeBreak`).checked;
+    const breakSeconds = includeBreak ? getNumberValue(`block_${block}_breakSeconds`, 60) : 0;
 
     const stations = [];
 
@@ -542,6 +592,7 @@ function saveWorkout() {
       workSeconds,
       restSeconds,
       rounds,
+      includeBreak,
       breakSeconds,
       stations
     });
