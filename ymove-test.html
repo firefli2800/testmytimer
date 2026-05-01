@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>YMove Approval / Cache Test</title>
+<title>YMove Approval / Cache Dashboard</title>
 <style>
 :root{
   --bg:#0d0d0d;
@@ -20,7 +20,7 @@ body{
   background:var(--bg);
   color:var(--text);
   padding:24px;
-  max-width:1350px;
+  max-width:1400px;
   margin:0 auto;
 }
 
@@ -66,7 +66,7 @@ input,select{
 }
 
 input{
-  min-width:280px;
+  min-width:260px;
 }
 
 button{
@@ -261,6 +261,11 @@ pre{
   font-weight:bold;
 }
 
+.cacheSoon{
+  color:#ffd36a;
+  font-weight:bold;
+}
+
 .filterButtons{
   display:flex;
   gap:8px;
@@ -283,7 +288,7 @@ pre{
 
 .summaryCards{
   display:grid;
-  grid-template-columns:repeat(4,minmax(120px,1fr));
+  grid-template-columns:repeat(5,minmax(120px,1fr));
   gap:10px;
   margin-top:12px;
 }
@@ -305,6 +310,14 @@ pre{
   font-size:12px;
 }
 
+.approvedControls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:end;
+  margin-bottom:14px;
+}
+
 @media(max-width:900px){
   .layout{
     grid-template-columns:1fr;
@@ -318,14 +331,45 @@ pre{
 </head>
 <body>
 
-<h1>YMove Approval / Cache Test</h1>
+<h1>YMove Approval / Cache Dashboard</h1>
 <p>
-  This page tests the smart YMove workflow: search text first, fetch preview only when you choose, approve/cache once, then reuse the shared cached URL by exercise ID.
+  Search YMove text results, manually fetch previews, approve/cache useful exercises, and track how long each cached video URL has left.
 </p>
 
 <div class="panel">
+  <h2>Cache Dashboard</h2>
+
+  <div class="summaryCards">
+    <div class="summaryCard">
+      <div id="approvedCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Approved</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="validCacheCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Valid Cache</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="expiredCacheCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Expired / Missing</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="soonCacheCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Expiring Soon</div>
+    </div>
+
+    <div class="summaryCard">
+      <div id="searchTotalCount" class="summaryNumber">0</div>
+      <div class="summaryLabel">Search Matches</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
   <h2>Mock Builder Slot</h2>
-  <p>This simulates what the real builder will eventually do after exercises are approved.</p>
+  <p>This simulates how the real builder will later pick from your approved YMove library.</p>
 
   <div class="slotGrid">
     <div id="slotA" class="slot active" onclick="setActiveSlot('A')">
@@ -444,8 +488,26 @@ pre{
     </div>
 
     <div class="panel">
-      <h2>Approved YMove Library</h2>
-      <p>These are saved in Firebase and can be reused by the real builder later.</p>
+      <h2>Approved / Cached YMove Library</h2>
+      <p>This is your temporary movement bank. These exercises are saved in Firebase and can be reused later.</p>
+
+      <div class="approvedControls">
+        <div class="field">
+          <label for="approvedSearchBox">Filter Approved Library</label>
+          <input id="approvedSearchBox" placeholder="filter approved exercises..." oninput="renderApprovedLibrary()">
+        </div>
+
+        <div class="field">
+          <label for="approvedSort">Sort</label>
+          <select id="approvedSort" onchange="renderApprovedLibrary()">
+            <option value="name">Name</option>
+            <option value="cache">Cache Status</option>
+            <option value="expires">Expires Soonest</option>
+            <option value="newest">Newest Approved</option>
+          </select>
+        </div>
+      </div>
+
       <div id="approvedList"></div>
     </div>
   </div>
@@ -570,6 +632,15 @@ const shownCount = document.getElementById("shownCount");
 const totalCount = document.getElementById("totalCount");
 const pageCount = document.getElementById("pageCount");
 const pageSizeCount = document.getElementById("pageSizeCount");
+
+const approvedCount = document.getElementById("approvedCount");
+const validCacheCount = document.getElementById("validCacheCount");
+const expiredCacheCount = document.getElementById("expiredCacheCount");
+const soonCacheCount = document.getElementById("soonCacheCount");
+const searchTotalCount = document.getElementById("searchTotalCount");
+
+const approvedSearchBox = document.getElementById("approvedSearchBox");
+const approvedSort = document.getElementById("approvedSort");
 
 const prevPageBtn = document.getElementById("prevPageBtn");
 const nextPageBtn = document.getElementById("nextPageBtn");
@@ -715,22 +786,51 @@ function makeBuilderItem(approved) {
   };
 }
 
-function cacheStatus(cache) {
+function getCacheInfo(cache) {
   if (!cache || !cache.expiresAt) {
-    return `<span class="cacheBad">No cache</span>`;
+    return {
+      status: "missing",
+      label: "No cache",
+      className: "cacheBad",
+      remainingMs: 0
+    };
   }
 
   const now = Date.now();
   const remainingMs = Number(cache.expiresAt) - now;
 
   if (remainingMs <= 0) {
-    return `<span class="cacheBad">Expired</span>`;
+    return {
+      status: "expired",
+      label: "Expired",
+      className: "cacheBad",
+      remainingMs
+    };
   }
 
   const hours = Math.floor(remainingMs / (60 * 60 * 1000));
   const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
 
-  return `<span class="cacheGood">Valid ~${hours}h ${minutes}m</span>`;
+  if (remainingMs < 4 * 60 * 60 * 1000) {
+    return {
+      status: "soon",
+      label: `Expiring soon ~${hours}h ${minutes}m`,
+      className: "cacheSoon",
+      remainingMs
+    };
+  }
+
+  return {
+    status: "valid",
+    label: `Valid ~${hours}h ${minutes}m`,
+    className: "cacheGood",
+    remainingMs
+  };
+}
+
+function cacheStatus(cache) {
+  const info = getCacheInfo(cache);
+  return `<span class="${info.className}">${info.label}</span>`;
 }
 
 function setActiveSlot(slot) {
@@ -862,15 +962,77 @@ function renderSearchResults(exercises) {
   });
 }
 
+function updateCacheDashboard() {
+  const list = Object.values(approvedExercises || {});
+  let valid = 0;
+  let expired = 0;
+  let soon = 0;
+
+  list.forEach(item => {
+    const info = getCacheInfo(item.cache);
+
+    if (info.status === "valid") valid += 1;
+    else if (info.status === "soon") soon += 1;
+    else expired += 1;
+  });
+
+  approvedCount.textContent = String(list.length);
+  validCacheCount.textContent = String(valid);
+  soonCacheCount.textContent = String(soon);
+  expiredCacheCount.textContent = String(expired);
+}
+
+function getFilteredApprovedList() {
+  const filter = approvedSearchBox.value.trim().toLowerCase();
+  let list = Object.values(approvedExercises || {});
+
+  if (filter) {
+    list = list.filter(item => {
+      const text = [
+        item.name,
+        item.exerciseId,
+        item.meta?.category,
+        item.meta?.muscleGroup,
+        item.meta?.equipment,
+        item.meta?.difficulty,
+        item.meta?.exerciseType,
+        item.meta?.slug
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      return text.includes(filter);
+    });
+  }
+
+  const sort = approvedSort.value;
+
+  if (sort === "cache") {
+    list.sort((a, b) => {
+      const order = { expired: 0, missing: 0, soon: 1, valid: 2 };
+      return (order[getCacheInfo(a.cache).status] || 0) - (order[getCacheInfo(b.cache).status] || 0);
+    });
+  } else if (sort === "expires") {
+    list.sort((a, b) => {
+      const aExp = Number(a.cache?.expiresAt || 0);
+      const bExp = Number(b.cache?.expiresAt || 0);
+      return aExp - bExp;
+    });
+  } else if (sort === "newest") {
+    list.sort((a, b) => Number(b.approvedAt || 0) - Number(a.approvedAt || 0));
+  } else {
+    list.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  }
+
+  return list;
+}
+
 function renderApprovedLibrary() {
   approvedListEl.innerHTML = "";
+  updateCacheDashboard();
 
-  const list = Object.values(approvedExercises || {}).sort((a, b) =>
-    String(a.name || "").localeCompare(String(b.name || ""))
-  );
+  const list = getFilteredApprovedList();
 
   if (!list.length) {
-    approvedListEl.innerHTML = `<p>No approved YMove exercises yet.</p>`;
+    approvedListEl.innerHTML = `<p>No approved YMove exercises match this filter.</p>`;
     return;
   }
 
@@ -886,12 +1048,17 @@ function renderApprovedLibrary() {
       approved.meta?.exerciseType
     ].filter(Boolean).join(" • ");
 
+    const expiresText = approved.cache?.expiresAt
+      ? new Date(approved.cache.expiresAt).toLocaleString()
+      : "No expiration saved";
+
     div.innerHTML = `
       <div class="resultTitle">${approved.name}</div>
       <div class="resultMeta">
         ID: ${approved.exerciseId}<br>
         ${meta || "No metadata"}<br>
-        Cache: ${cacheStatus(approved.cache)}
+        Cache: ${cacheStatus(approved.cache)}<br>
+        Expires: ${expiresText}
       </div>
     `;
 
@@ -1008,6 +1175,7 @@ async function searchExercises() {
 function updateSummary(shown, pagination) {
   shownCount.textContent = String(shown || 0);
   totalCount.textContent = pagination?.total ? String(pagination.total) : "0";
+  searchTotalCount.textContent = pagination?.total ? String(pagination.total) : "0";
   pageCount.textContent = pagination ? `${pagination.page}/${pagination.totalPages}` : "-";
   pageSizeCount.textContent = pagination?.pageSize ? String(pagination.pageSize) : String(PAGE_SIZE);
 }
@@ -1181,6 +1349,10 @@ searchBox.addEventListener("keydown", (event) => {
     startSearch();
   }
 });
+
+setInterval(() => {
+  renderApprovedLibrary();
+}, 60000);
 
 renderFilterButtons();
 renderSlots();
