@@ -2,36 +2,108 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Controller</title>
+<title>Workout Controller</title>
 <style>
 body{
   font-family:Arial,sans-serif;
-  padding:20px;
   background:#111;
   color:#fff;
+  padding:24px;
+  max-width:900px;
+  margin:0 auto;
 }
+
+h1,h2{
+  margin-top:0;
+}
+
+.panel{
+  background:#171717;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:16px;
+  margin:16px 0;
+}
+
 button{
-  margin:5px;
-  padding:10px 14px;
-  font-size:16px;
+  padding:14px 20px;
+  font-size:18px;
+  font-weight:bold;
+  border-radius:10px;
+  border:1px solid #555;
+  cursor:pointer;
+  margin:8px;
 }
+
+button.primary{
+  background:#fff;
+  color:#000;
+}
+
+button.secondary{
+  background:#222;
+  color:#fff;
+}
+
+button.danger{
+  background:#401111;
+  color:#fff;
+  border-color:#8a3333;
+}
+
+#timer{
+  font-size:72px;
+  font-weight:bold;
+  margin:16px 0;
+}
+
 #status{
-  margin-top:15px;
   color:#bbb;
+  margin-top:10px;
+}
+
+.row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+}
+
+.small{
+  color:#aaa;
+  font-size:14px;
 }
 </style>
 </head>
 <body>
 
-<h2>Controller</h2>
+<h1>Workout Controller</h1>
 
-<button onclick="play()">Play</button>
-<button onclick="pauseTimer()">Pause</button>
-<button onclick="resetTimer()">Reset</button>
-<button onclick="prev()">Previous</button>
-<button onclick="next()">Next</button>
+<div class="panel">
+  <h2>Live Timer</h2>
+  <div id="timer">--:--</div>
+  <div id="status">Loading...</div>
 
-<div id="status"></div>
+  <div class="row">
+    <button class="primary" onclick="playWorkout()">Play</button>
+    <button class="secondary" onclick="pauseWorkout()">Pause</button>
+    <button class="danger" onclick="resetWorkout()">Reset</button>
+  </div>
+
+  <div class="row">
+    <button class="secondary" onclick="skipSeconds(-15)">Back 15s</button>
+    <button class="secondary" onclick="skipSeconds(15)">Forward 15s</button>
+  </div>
+
+  <p class="small">
+    This controller uses Firebase server time so all displays calculate from the same clock.
+  </p>
+</div>
+
+<div class="panel">
+  <h2>State Debug</h2>
+  <pre id="debug">{}</pre>
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -41,275 +113,272 @@ const firebaseConfig = {
   apiKey: "AIzaSyAR7B5phYOnasZkBQyqut56i_DKA8HFJz0",
   authDomain: "timer-app-30e7d.firebaseapp.com",
   databaseURL: "https://timer-app-30e7d-default-rtdb.firebaseio.com",
-  projectId: "timer-app-30e7d"
+  projectId: "timer-app-30e7d",
+  storageBucket: "timer-app-30e7d.firebasestorage.app"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+const timerEl = document.getElementById("timer");
 const statusEl = document.getElementById("status");
+const debugEl = document.getElementById("debug");
 
 let workoutConfig = null;
+let state = {
+  paused: true,
+  startAt: 0,
+  elapsedMs: 0,
+  updatedAt: 0
+};
+
+let serverTimeOffset = 0;
+
+function numberOrDefault(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function emptyAction() {
+  return {
+    source: "firebase",
+    path: "",
+    name: ""
+  };
+}
 
 function defaultWorkoutConfig() {
   return {
     includeWarmup: true,
     includeCooldown: true,
     loopBlocks: false,
-
     warmupSeconds: 180,
     cooldownSeconds: 180,
-
+    warmupPath: "",
+    cooldownPath: "",
     blocks: Array.from({ length: 6 }, () => ({
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
-      includeBreak: true,
-      breakSeconds: 60
+      breakSeconds: 0,
+      stations: [
+        [emptyAction(), emptyAction()],
+        [emptyAction(), emptyAction()],
+        [emptyAction(), emptyAction()]
+      ]
     }))
   };
 }
 
 function normalizeConfig(config) {
-  const base = defaultWorkoutConfig();
-  const incoming = config || {};
-
-  const normalized = {
-    ...base,
-    ...incoming,
-    includeWarmup: incoming.includeWarmup !== undefined ? incoming.includeWarmup : base.includeWarmup,
-    includeCooldown: incoming.includeCooldown !== undefined ? incoming.includeCooldown : base.includeCooldown,
-    loopBlocks: incoming.loopBlocks !== undefined ? incoming.loopBlocks : base.loopBlocks,
-    blocks: []
+  return {
+    ...defaultWorkoutConfig(),
+    ...(config || {}),
+    blocks: (config?.blocks || defaultWorkoutConfig().blocks)
   };
-
-  for (let i = 0; i < 6; i += 1) {
-    const oldBlock = incoming.blocks?.[i];
-
-    if (Array.isArray(oldBlock)) {
-      normalized.blocks.push({ ...base.blocks[i] });
-    } else {
-      normalized.blocks.push({
-        ...base.blocks[i],
-        ...(oldBlock || {})
-      });
-    }
-  }
-
-  return normalized;
 }
 
-function getNumberOrDefault(value, fallback) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : fallback;
-}
-
-function buildDurations() {
+function buildTimeline() {
   const config = workoutConfig || defaultWorkoutConfig();
-  const durations = [];
+  const segments = [];
 
-  /*
-    Loop mode is blocks-only mode.
-    It intentionally skips warmup and cooldown.
-  */
   if (!config.loopBlocks && config.includeWarmup !== false) {
-    durations.push(getNumberOrDefault(config.warmupSeconds, 180));
+    segments.push({
+      kind: "warmup",
+      duration: numberOrDefault(config.warmupSeconds, 180)
+    });
   }
 
-  config.blocks.forEach(block => {
-    const rounds = getNumberOrDefault(block.rounds, 3);
-    const workSeconds = getNumberOrDefault(block.workSeconds, 45);
-    const restSeconds = getNumberOrDefault(block.restSeconds, 15);
-    const breakSeconds = getNumberOrDefault(block.breakSeconds, 60);
+  (config.blocks || []).forEach((block) => {
+    const rounds = numberOrDefault(block.rounds, 3);
+    const workSeconds = numberOrDefault(block.workSeconds, 45);
+    const restSeconds = numberOrDefault(block.restSeconds, 15);
+    const breakSeconds = numberOrDefault(block.breakSeconds, 0);
 
     for (let i = 0; i < rounds; i += 1) {
-      durations.push(workSeconds);
+      segments.push({ kind: "work", duration: workSeconds });
 
       if (restSeconds > 0) {
-        durations.push(restSeconds);
+        segments.push({ kind: "rest", duration: restSeconds });
       }
     }
 
     if (breakSeconds > 0) {
-      durations.push(breakSeconds);
+      segments.push({ kind: "break", duration: breakSeconds });
     }
   });
 
   if (!config.loopBlocks && config.includeCooldown !== false) {
-    durations.push(getNumberOrDefault(config.cooldownSeconds, 180));
+    segments.push({
+      kind: "cooldown",
+      duration: numberOrDefault(config.cooldownSeconds, 180)
+    });
   }
 
-  return durations;
+  return segments;
 }
 
-function defaultState() {
-  return {
-    startTime: Date.now(),
-    paused: true,
-    elapsed: 0
-  };
+function getTotalDurationMs() {
+  return buildTimeline().reduce((sum, segment) => sum + segment.duration * 1000, 0);
 }
 
-function withState(callback) {
-  db.ref("state").once("value", (snap) => {
-    callback({ ...defaultState(), ...(snap.val() || {}) });
-  });
+function getServerNow() {
+  return Date.now() + serverTimeOffset;
 }
 
-function totalDurationMs() {
-  return buildDurations().reduce((sum, seconds) => sum + (seconds * 1000), 0);
-}
+function getElapsedMs() {
+  const total = getTotalDurationMs();
 
-function clampElapsed(ms) {
-  const total = totalDurationMs();
-  const safeMs = Math.max(0, ms || 0);
+  let elapsed = state.paused
+    ? numberOrDefault(state.elapsedMs, 0)
+    : getServerNow() - numberOrDefault(state.startAt, getServerNow());
+
+  elapsed = Math.max(0, elapsed);
 
   if (workoutConfig?.loopBlocks && total > 0) {
-    return safeMs % total;
+    return elapsed % total;
   }
 
-  return Math.max(0, Math.min(safeMs, total));
-}
-
-function currentElapsedMs(state) {
-  const raw = state.paused
-    ? state.elapsed
-    : (Date.now() - state.startTime);
-
-  return clampElapsed(raw || 0);
-}
-
-function findSegmentIndex(elapsedMs) {
-  const durations = buildDurations();
-  let cursor = 0;
-
-  for (let i = 0; i < durations.length; i += 1) {
-    cursor += durations[i] * 1000;
-    if (elapsedMs < cursor) return i;
-  }
-
-  return durations.length - 1;
-}
-
-function segmentStartMs(index) {
-  const durations = buildDurations();
-  let cursor = 0;
-
-  for (let i = 0; i < index; i += 1) {
-    cursor += durations[i] * 1000;
-  }
-
-  return cursor;
-}
-
-function seekTo(targetMs) {
-  withState((state) => {
-    const clamped = clampElapsed(targetMs);
-    const updates = {
-      startTime: Date.now() - clamped,
-      paused: state.paused
-    };
-
-    if (state.paused) {
-      updates.elapsed = clamped;
-    }
-
-    db.ref("state").update(updates);
-  });
-}
-
-function play() {
-  withState((state) => {
-    const elapsed = clampElapsed(state.elapsed || 0);
-
-    db.ref("state").update({
-      paused: false,
-      startTime: Date.now() - elapsed,
-      elapsed
-    });
-  });
-}
-
-function pauseTimer() {
-  withState((state) => {
-    if (state.paused) return;
-
-    db.ref("state").update({
-      paused: true,
-      elapsed: currentElapsedMs(state)
-    });
-  });
-}
-
-function resetTimer() {
-  db.ref("state").set({
-    startTime: Date.now(),
-    paused: true,
-    elapsed: 0
-  });
-}
-
-function next() {
-  withState((state) => {
-    const durations = buildDurations();
-    const elapsedMs = currentElapsedMs(state);
-    const currentIndex = findSegmentIndex(elapsedMs);
-
-    let targetMs;
-
-    if (currentIndex >= durations.length - 1) {
-      targetMs = workoutConfig?.loopBlocks ? 0 : totalDurationMs();
-    } else {
-      targetMs = segmentStartMs(currentIndex + 1);
-    }
-
-    seekTo(targetMs);
-  });
-}
-
-function prev() {
-  withState((state) => {
-    const durations = buildDurations();
-    const elapsedMs = currentElapsedMs(state);
-    const currentIndex = findSegmentIndex(elapsedMs);
-
-    let targetMs;
-
-    if (currentIndex <= 0) {
-      targetMs = workoutConfig?.loopBlocks
-        ? segmentStartMs(durations.length - 1)
-        : 0;
-    } else {
-      targetMs = segmentStartMs(currentIndex - 1);
-    }
-
-    seekTo(targetMs);
-  });
+  return Math.min(elapsed, total);
 }
 
 function format(totalSeconds) {
-  const safe = Math.max(0, totalSeconds);
+  const safe = Math.max(0, Math.floor(totalSeconds));
   const minutes = Math.floor(safe / 60);
   const seconds = safe % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function updateStatus() {
-  const totalSeconds = Math.round(totalDurationMs() / 1000);
+function render() {
+  const elapsedMs = getElapsedMs();
+  const totalMs = getTotalDurationMs();
 
-  if (workoutConfig?.loopBlocks) {
-    statusEl.innerText = `Loop mode loaded: ${format(totalSeconds)} per loop / repeats continuously`;
+  let remainingMs;
+
+  if (workoutConfig?.loopBlocks && totalMs > 0) {
+    remainingMs = totalMs - elapsedMs;
   } else {
-    statusEl.innerText = `Loaded workout length: ${format(totalSeconds)}`;
+    remainingMs = Math.max(0, totalMs - elapsedMs);
+  }
+
+  timerEl.textContent = format(Math.ceil(remainingMs / 1000));
+
+  statusEl.textContent = state.paused
+    ? "Paused"
+    : "Running";
+
+  debugEl.textContent = JSON.stringify({
+    state,
+    serverTimeOffset,
+    elapsedMs,
+    totalMs,
+    loopBlocks: workoutConfig?.loopBlocks === true
+  }, null, 2);
+}
+
+function playWorkout() {
+  const elapsedMs = getElapsedMs();
+
+  db.ref("state").update({
+    paused: false,
+    startAt: firebase.database.ServerValue.TIMESTAMP,
+    elapsedMs,
+    updatedAt: firebase.database.ServerValue.TIMESTAMP
+  }).then(() => {
+    /*
+      Important:
+      ServerValue.TIMESTAMP becomes the timestamp of the write.
+      Displays use startAt + elapsedMs correction by subtracting elapsedMs.
+      We store elapsedMs separately so resume does not lose place.
+    */
+    return db.ref("state").once("value");
+  }).then(snap => {
+    const data = snap.val() || {};
+    if (data.startAt && elapsedMs > 0) {
+      return db.ref("state").update({
+        startAt: data.startAt - elapsedMs
+      });
+    }
+  }).catch(err => {
+    statusEl.textContent = "Play error: " + err.message;
+  });
+}
+
+function pauseWorkout() {
+  const elapsedMs = getElapsedMs();
+
+  db.ref("state").update({
+    paused: true,
+    elapsedMs,
+    updatedAt: firebase.database.ServerValue.TIMESTAMP
+  }).catch(err => {
+    statusEl.textContent = "Pause error: " + err.message;
+  });
+}
+
+function resetWorkout() {
+  db.ref("state").set({
+    paused: true,
+    startAt: 0,
+    elapsedMs: 0,
+    updatedAt: firebase.database.ServerValue.TIMESTAMP
+  }).catch(err => {
+    statusEl.textContent = "Reset error: " + err.message;
+  });
+}
+
+function skipSeconds(seconds) {
+  const total = getTotalDurationMs();
+  const nextElapsed = Math.max(0, Math.min(getElapsedMs() + seconds * 1000, total));
+
+  if (state.paused) {
+    db.ref("state").update({
+      paused: true,
+      elapsedMs: nextElapsed,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    });
+  } else {
+    db.ref("state").update({
+      paused: false,
+      startAt: getServerNow() - nextElapsed,
+      elapsedMs: nextElapsed,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    });
   }
 }
 
-db.ref("workoutConfig").on("value", snap => {
-  workoutConfig = normalizeConfig(snap.val());
-  updateStatus();
+db.ref(".info/serverTimeOffset").on("value", snap => {
+  serverTimeOffset = snap.val() || 0;
+  render();
 });
 
-updateStatus();
+db.ref("state").on("value", snap => {
+  state = {
+    paused: true,
+    startAt: 0,
+    elapsedMs: 0,
+    updatedAt: 0,
+    ...(snap.val() || {})
+  };
+
+  /*
+    Backward compatibility:
+    If older state used elapsed instead of elapsedMs, convert it safely.
+  */
+  if (!state.elapsedMs && state.elapsed) {
+    state.elapsedMs = state.elapsed;
+  }
+
+  render();
+});
+
+db.ref("workoutConfig").on("value", snap => {
+  workoutConfig = normalizeConfig(snap.val());
+  render();
+});
+
+render();
+setInterval(render, 250);
 </script>
 
 </body>
