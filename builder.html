@@ -64,6 +64,7 @@ select,input{
   color:#fff;
   border:1px solid #444;
   border-radius:6px;
+  box-sizing:border-box;
 }
 
 input[type="checkbox"]{
@@ -93,6 +94,14 @@ button.secondary{
   color:#fff;
 }
 
+button.previewBtn{
+  margin-top:10px;
+  padding:8px 12px;
+  font-size:14px;
+  background:#252525;
+  color:#fff;
+}
+
 small{
   color:#bbb;
 }
@@ -102,8 +111,64 @@ small{
   color:#bbb;
 }
 
+.previewGrid{
+  display:grid;
+  grid-template-columns:minmax(320px,480px) 1fr;
+  gap:16px;
+  align-items:start;
+}
+
+#previewVideo{
+  width:100%;
+  max-height:270px;
+  background:#000;
+  border:1px solid #333;
+  border-radius:10px;
+}
+
+.previewInfo{
+  background:#101010;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:14px;
+}
+
+.previewLabel{
+  color:#999;
+  font-size:13px;
+  text-transform:uppercase;
+  letter-spacing:.6px;
+  margin-bottom:6px;
+}
+
+.previewValue{
+  font-size:22px;
+  font-weight:bold;
+  line-height:1.15;
+  white-space:pre-line;
+  word-break:break-word;
+}
+
+.previewPath{
+  font-size:13px;
+  color:#aaa;
+  word-break:break-word;
+  line-height:1.4;
+}
+
+.displayNameInput{
+  margin-top:8px;
+}
+
+.helpText{
+  margin-top:6px;
+  color:#999;
+  font-size:12px;
+  line-height:1.35;
+}
+
 @media(max-width:1000px){
-  .grid,.stationGrid{
+  .grid,.stationGrid,.previewGrid{
     grid-template-columns:1fr;
   }
 }
@@ -114,6 +179,7 @@ small{
 <h1>Workout Builder</h1>
 <small>
   Firebase-only builder. Pick warmup, cooldown, and 2 actions per station from uploaded Firebase Storage videos.
+  Each movement now has a custom display name for the TV screens.
 </small>
 
 <div class="section">
@@ -145,6 +211,35 @@ small{
 </div>
 
 <div class="section">
+  <h2>Movement Preview</h2>
+
+  <div class="previewGrid">
+    <div>
+      <video id="previewVideo" controls muted playsinline preload="metadata"></video>
+    </div>
+
+    <div class="previewInfo">
+      <div class="previewLabel">Selected Slot</div>
+      <div id="previewSlot" class="previewValue">No movement selected</div>
+
+      <div style="height:14px;"></div>
+
+      <div class="previewLabel">TV Display Text</div>
+      <div id="previewDisplayText" class="previewValue">--</div>
+
+      <div style="height:14px;"></div>
+
+      <div class="previewLabel">Firebase Path</div>
+      <div id="previewPath" class="previewPath">--</div>
+
+      <p class="helpText">
+        The dropdown selects the MP4 file. The Display Name field controls what the TV screen actually shows.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
   <h2>Quick Actions</h2>
   <button type="button" class="secondary" onclick="copyBlockGroup(0, [1,2])">Copy Block 1 to Blocks 2 and 3</button>
   <button type="button" class="secondary" onclick="copyBlockGroup(3, [4,5])">Copy Block 4 to Blocks 5 and 6</button>
@@ -162,6 +257,7 @@ small{
     <div>
       <label for="warmupPath">Warmup Video</label>
       <select id="warmupPath"></select>
+      <button type="button" class="previewBtn" onclick="previewSimpleVideo('Warmup', warmupSelect.value, cleanName(warmupSelect.value))">Preview Warmup</button>
     </div>
 
     <div>
@@ -172,6 +268,7 @@ small{
     <div>
       <label for="cooldownPath">Cooldown Video</label>
       <select id="cooldownPath"></select>
+      <button type="button" class="previewBtn" onclick="previewSimpleVideo('Cooldown', cooldownSelect.value, cleanName(cooldownSelect.value))">Preview Cooldown</button>
     </div>
   </div>
 </div>
@@ -216,10 +313,17 @@ const blocksContainer = document.getElementById("blocksContainer");
 const statusEl = document.getElementById("status");
 const libraryStatus = document.getElementById("libraryStatus");
 
+const previewVideo = document.getElementById("previewVideo");
+const previewSlot = document.getElementById("previewSlot");
+const previewDisplayText = document.getElementById("previewDisplayText");
+const previewPath = document.getElementById("previewPath");
+
 let workoutConfig = null;
 let warmupFiles = [];
 let cooldownFiles = [];
 let workoutFiles = [];
+
+const firebaseUrlCache = {};
 
 function numberOrDefault(value, fallback) {
   const number = Number(value);
@@ -240,11 +344,13 @@ function emptyAction() {
   };
 }
 
-function firebaseAction(path) {
+function firebaseAction(path, customName) {
+  const clean = cleanName(path || "");
+
   return {
     source: "firebase",
     path: path || "",
-    name: cleanName(path || "")
+    name: customName || clean
   };
 }
 
@@ -451,9 +557,32 @@ function buildBlocksUI() {
           <h3>Action ${actionLetter}</h3>
 
           <div>
-            <label for="block_${block}_station_${station}_action_${action}_select">Movement</label>
-            <select id="block_${block}_station_${station}_action_${action}_select"></select>
+            <label for="block_${block}_station_${station}_action_${action}_select">Movement Video</label>
+            <select
+              id="block_${block}_station_${station}_action_${action}_select"
+              onchange="onActionSelectChange(${block}, ${station}, ${action})"
+              onfocus="previewAction(${block}, ${station}, ${action})"
+            ></select>
           </div>
+
+          <div class="displayNameInput">
+            <label for="block_${block}_station_${station}_action_${action}_name">Display Name</label>
+            <input
+              id="block_${block}_station_${station}_action_${action}_name"
+              type="text"
+              value="${escapeHtml(actionData.name || cleanName(actionData.path || ""))}"
+              placeholder="Name shown on TV screen"
+              oninput="previewAction(${block}, ${station}, ${action})"
+              onfocus="previewAction(${block}, ${station}, ${action})"
+            >
+            <div class="helpText">
+              This is the text that appears over the video on the display screen.
+            </div>
+          </div>
+
+          <button type="button" class="previewBtn" onclick="previewAction(${block}, ${station}, ${action})">
+            Preview This Movement
+          </button>
         `;
 
         box.appendChild(actionBox);
@@ -466,6 +595,15 @@ function buildBlocksUI() {
       stationContainer.appendChild(box);
     }
   }
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function populateActionSelect(block, station, action, selectedAction) {
@@ -507,12 +645,99 @@ function renderBuilder() {
   renderLibraryStatus();
 }
 
+function getActionSelect(block, station, action) {
+  return document.getElementById(`block_${block}_station_${station}_action_${action}_select`);
+}
+
+function getActionNameInput(block, station, action) {
+  return document.getElementById(`block_${block}_station_${station}_action_${action}_name`);
+}
+
 function getActionFromUI(block, station, action) {
-  const value = document.getElementById(`block_${block}_station_${station}_action_${action}_select`).value;
+  const select = getActionSelect(block, station, action);
+  const nameInput = getActionNameInput(block, station, action);
 
-  if (!value) return null;
+  const path = select.value;
+  const customName = nameInput.value.trim();
 
-  return firebaseAction(value);
+  if (!path) return null;
+
+  return firebaseAction(path, customName || cleanName(path));
+}
+
+function onActionSelectChange(block, station, action) {
+  const select = getActionSelect(block, station, action);
+  const nameInput = getActionNameInput(block, station, action);
+
+  const selectedPath = select.value;
+
+  /*
+    When a new video is selected, auto-fill the display name from the file name.
+    The user can still edit it after.
+  */
+  nameInput.value = selectedPath ? cleanName(selectedPath) : "";
+
+  previewAction(block, station, action);
+}
+
+async function getFirebaseUrl(path) {
+  if (!path) return null;
+  if (firebaseUrlCache[path]) return firebaseUrlCache[path];
+
+  const url = await storage.ref(path).getDownloadURL();
+  firebaseUrlCache[path] = url;
+  return url;
+}
+
+async function previewSimpleVideo(slotLabel, path, displayName) {
+  if (!path) {
+    setPreview(slotLabel, "", "", null);
+    return;
+  }
+
+  try {
+    const url = await getFirebaseUrl(path);
+    setPreview(slotLabel, displayName || cleanName(path), path, url);
+  } catch (error) {
+    statusEl.textContent = "Preview error: " + error.message;
+  }
+}
+
+async function previewAction(block, station, action) {
+  const select = getActionSelect(block, station, action);
+  const nameInput = getActionNameInput(block, station, action);
+
+  const path = select.value;
+  const displayName = nameInput.value.trim() || cleanName(path);
+  const actionLetter = action === 0 ? "A" : "B";
+  const slotLabel = `Block ${block + 1} • Station ${station + 1} • Action ${actionLetter}`;
+
+  if (!path) {
+    setPreview(slotLabel, displayName, "", null);
+    return;
+  }
+
+  try {
+    const url = await getFirebaseUrl(path);
+    setPreview(slotLabel, displayName, path, url);
+  } catch (error) {
+    statusEl.textContent = "Preview error: " + error.message;
+  }
+}
+
+function setPreview(slotLabel, displayName, path, url) {
+  previewSlot.textContent = slotLabel || "No movement selected";
+  previewDisplayText.textContent = displayName || "--";
+  previewPath.textContent = path || "--";
+
+  if (url) {
+    previewVideo.src = url;
+    previewVideo.load();
+  } else {
+    previewVideo.pause();
+    previewVideo.removeAttribute("src");
+    previewVideo.load();
+  }
 }
 
 function copyBlockToNext(block) {
@@ -520,21 +745,37 @@ function copyBlockToNext(block) {
 
   for (let station = 0; station < 3; station += 1) {
     for (let action = 0; action < 2; action += 1) {
-      const select = document.getElementById(`block_${block}_station_${station}_action_${action}_select`);
-      populateActionSelect(block + 1, station, action, firebaseAction(select.value));
+      const sourceSelect = getActionSelect(block, station, action);
+      const sourceName = getActionNameInput(block, station, action);
+
+      const targetSelect = getActionSelect(block + 1, station, action);
+      const targetName = getActionNameInput(block + 1, station, action);
+
+      targetSelect.value = sourceSelect.value;
+      targetName.value = sourceName.value;
     }
   }
+
+  statusEl.textContent = `Copied Block ${block + 1} to Block ${block + 2}. Remember to save.`;
 }
 
 function copyBlockGroup(sourceBlock, targetBlocks) {
   targetBlocks.forEach(targetBlock => {
     for (let station = 0; station < 3; station += 1) {
       for (let action = 0; action < 2; action += 1) {
-        const select = document.getElementById(`block_${sourceBlock}_station_${station}_action_${action}_select`);
-        populateActionSelect(targetBlock, station, action, firebaseAction(select.value));
+        const sourceSelect = getActionSelect(sourceBlock, station, action);
+        const sourceName = getActionNameInput(sourceBlock, station, action);
+
+        const targetSelect = getActionSelect(targetBlock, station, action);
+        const targetName = getActionNameInput(targetBlock, station, action);
+
+        targetSelect.value = sourceSelect.value;
+        targetName.value = sourceName.value;
       }
     }
   });
+
+  statusEl.textContent = `Copied Block ${sourceBlock + 1}. Remember to save.`;
 }
 
 function saveWorkout() {
@@ -589,7 +830,7 @@ function saveWorkout() {
 
   db.ref("workoutConfig").set(newConfig)
     .then(() => {
-      statusEl.textContent = "Workout saved. YMove-free Firebase config is live.";
+      statusEl.textContent = "Workout saved. Custom display names are live.";
     })
     .catch((err) => {
       statusEl.textContent = "Error saving workout: " + err.message;
