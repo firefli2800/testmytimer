@@ -9,11 +9,11 @@ body{
   background:#111;
   color:#fff;
   padding:24px;
-  max-width:900px;
+  max-width:1000px;
   margin:0 auto;
 }
 
-h1,h2{
+h1,h2,h3{
   margin-top:0;
 }
 
@@ -51,6 +51,12 @@ button.danger{
   border-color:#8a3333;
 }
 
+button.warning{
+  background:#3a2d0a;
+  color:#fff;
+  border-color:#8a6a18;
+}
+
 #timer{
   font-size:72px;
   font-weight:bold;
@@ -69,9 +75,62 @@ button.danger{
   align-items:center;
 }
 
+.infoGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(220px,1fr));
+  gap:12px;
+}
+
+.infoBox{
+  background:#101010;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:14px;
+}
+
+.infoLabel{
+  color:#999;
+  font-size:13px;
+  text-transform:uppercase;
+  letter-spacing:.6px;
+  margin-bottom:6px;
+}
+
+.infoValue{
+  font-size:22px;
+  font-weight:bold;
+  line-height:1.2;
+  white-space:pre-line;
+}
+
 .small{
   color:#aaa;
   font-size:14px;
+}
+
+pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  background:#0b0b0b;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:14px;
+  color:#ccc;
+}
+
+@media(max-width:700px){
+  .infoGrid{
+    grid-template-columns:1fr;
+  }
+
+  #timer{
+    font-size:56px;
+  }
+
+  button{
+    width:100%;
+    margin:6px 0;
+  }
 }
 </style>
 </head>
@@ -90,14 +149,51 @@ button.danger{
     <button class="danger" onclick="resetWorkout()">Reset</button>
   </div>
 
+  <hr style="border:0;border-top:1px solid #333;margin:18px 0;">
+
+  <h3>Section Controls</h3>
   <div class="row">
-    <button class="secondary" onclick="skipSeconds(-15)">Back 15s</button>
-    <button class="secondary" onclick="skipSeconds(15)">Forward 15s</button>
+    <button class="secondary" onclick="previousSection()">Previous Section</button>
+    <button class="warning" onclick="restartSection()">Restart Section</button>
+    <button class="secondary" onclick="nextSection()">Next Section</button>
+  </div>
+
+  <h3>Block Controls</h3>
+  <div class="row">
+    <button class="secondary" onclick="previousBlock()">Previous Block</button>
+    <button class="secondary" onclick="nextBlock()">Next Block</button>
   </div>
 
   <p class="small">
-    This controller uses Firebase server time so all displays calculate from the same clock.
+    This controller jumps by workout sections instead of moving by random seconds.
+    The displays stay synced because all screens still calculate from Firebase server time.
   </p>
+</div>
+
+<div class="panel">
+  <h2>Current Position</h2>
+
+  <div class="infoGrid">
+    <div class="infoBox">
+      <div class="infoLabel">Current Section</div>
+      <div id="currentSection" class="infoValue">Loading...</div>
+    </div>
+
+    <div class="infoBox">
+      <div class="infoLabel">Next Section</div>
+      <div id="nextSectionLabel" class="infoValue">Loading...</div>
+    </div>
+
+    <div class="infoBox">
+      <div class="infoLabel">Elapsed</div>
+      <div id="elapsedLabel" class="infoValue">--:--</div>
+    </div>
+
+    <div class="infoBox">
+      <div class="infoLabel">Total Workout Time</div>
+      <div id="totalLabel" class="infoValue">--:--</div>
+    </div>
+  </div>
 </div>
 
 <div class="panel">
@@ -124,7 +220,13 @@ const timerEl = document.getElementById("timer");
 const statusEl = document.getElementById("status");
 const debugEl = document.getElementById("debug");
 
+const currentSectionEl = document.getElementById("currentSection");
+const nextSectionLabelEl = document.getElementById("nextSectionLabel");
+const elapsedLabelEl = document.getElementById("elapsedLabel");
+const totalLabelEl = document.getElementById("totalLabel");
+
 let workoutConfig = null;
+
 let state = {
   paused: true,
   startAt: 0,
@@ -171,11 +273,33 @@ function defaultWorkoutConfig() {
 }
 
 function normalizeConfig(config) {
-  return {
-    ...defaultWorkoutConfig(),
-    ...(config || {}),
-    blocks: (config?.blocks || defaultWorkoutConfig().blocks)
+  const base = defaultWorkoutConfig();
+  const incoming = config || {};
+
+  const normalized = {
+    ...base,
+    ...incoming,
+    includeWarmup: incoming.includeWarmup !== undefined ? incoming.includeWarmup : base.includeWarmup,
+    includeCooldown: incoming.includeCooldown !== undefined ? incoming.includeCooldown : base.includeCooldown,
+    loopBlocks: incoming.loopBlocks !== undefined ? incoming.loopBlocks : base.loopBlocks,
+    blocks: []
   };
+
+  for (let i = 0; i < 6; i += 1) {
+    const oldBlock = incoming.blocks?.[i];
+
+    normalized.blocks.push({
+      ...base.blocks[i],
+      ...(oldBlock || {}),
+      workSeconds: numberOrDefault(oldBlock?.workSeconds, base.blocks[i].workSeconds),
+      restSeconds: numberOrDefault(oldBlock?.restSeconds, base.blocks[i].restSeconds),
+      rounds: numberOrDefault(oldBlock?.rounds, base.blocks[i].rounds),
+      breakSeconds: numberOrDefault(oldBlock?.breakSeconds, base.blocks[i].breakSeconds),
+      stations: oldBlock?.stations || base.blocks[i].stations
+    });
+  }
+
+  return normalized;
 }
 
 function buildTimeline() {
@@ -185,41 +309,93 @@ function buildTimeline() {
   if (!config.loopBlocks && config.includeWarmup !== false) {
     segments.push({
       kind: "warmup",
-      duration: numberOrDefault(config.warmupSeconds, 180)
+      duration: numberOrDefault(config.warmupSeconds, 180),
+      label: "WARMUP",
+      blockIndex: null,
+      roundIndex: null,
+      rounds: null
     });
   }
 
-  (config.blocks || []).forEach((block) => {
+  (config.blocks || []).forEach((block, blockIndex) => {
     const rounds = numberOrDefault(block.rounds, 3);
     const workSeconds = numberOrDefault(block.workSeconds, 45);
     const restSeconds = numberOrDefault(block.restSeconds, 15);
     const breakSeconds = numberOrDefault(block.breakSeconds, 0);
 
-    for (let i = 0; i < rounds; i += 1) {
-      segments.push({ kind: "work", duration: workSeconds });
+    for (let roundIndex = 1; roundIndex <= rounds; roundIndex += 1) {
+      segments.push({
+        kind: "work",
+        duration: workSeconds,
+        label: `BLOCK ${blockIndex + 1}\nROUND ${roundIndex}/${rounds}\nWORK`,
+        blockIndex,
+        roundIndex,
+        rounds
+      });
 
       if (restSeconds > 0) {
-        segments.push({ kind: "rest", duration: restSeconds });
+        segments.push({
+          kind: "rest",
+          duration: restSeconds,
+          label: `BLOCK ${blockIndex + 1}\nROUND ${roundIndex}/${rounds}\nREST`,
+          blockIndex,
+          roundIndex,
+          rounds
+        });
       }
     }
 
     if (breakSeconds > 0) {
-      segments.push({ kind: "break", duration: breakSeconds });
+      segments.push({
+        kind: "break",
+        duration: breakSeconds,
+        label: `BLOCK ${blockIndex + 1}\nBREAK`,
+        blockIndex,
+        roundIndex: null,
+        rounds
+      });
     }
   });
 
   if (!config.loopBlocks && config.includeCooldown !== false) {
     segments.push({
       kind: "cooldown",
-      duration: numberOrDefault(config.cooldownSeconds, 180)
+      duration: numberOrDefault(config.cooldownSeconds, 180),
+      label: "COOLDOWN / STRETCH",
+      blockIndex: null,
+      roundIndex: null,
+      rounds: null
     });
   }
 
   return segments;
 }
 
+function buildTimelineWithStarts() {
+  const timeline = buildTimeline();
+  let cursorMs = 0;
+
+  return timeline.map((segment, index) => {
+    const startMs = cursorMs;
+    const durationMs = segment.duration * 1000;
+    const endMs = startMs + durationMs;
+
+    cursorMs = endMs;
+
+    return {
+      ...segment,
+      index,
+      startMs,
+      endMs,
+      durationMs
+    };
+  });
+}
+
 function getTotalDurationMs() {
-  return buildTimeline().reduce((sum, segment) => sum + segment.duration * 1000, 0);
+  return buildTimeline().reduce((sum, segment) => {
+    return sum + segment.duration * 1000;
+  }, 0);
 }
 
 function getServerNow() {
@@ -242,63 +418,146 @@ function getElapsedMs() {
   return Math.min(elapsed, total);
 }
 
+function locateSegment(elapsedMs) {
+  const timeline = buildTimelineWithStarts();
+  const total = getTotalDurationMs();
+
+  if (!timeline.length) {
+    return {
+      index: 0,
+      segment: null,
+      segmentElapsedMs: 0,
+      finished: true
+    };
+  }
+
+  if (elapsedMs >= total && !workoutConfig?.loopBlocks) {
+    const last = timeline[timeline.length - 1];
+
+    return {
+      index: last.index,
+      segment: last,
+      segmentElapsedMs: last.durationMs,
+      finished: true
+    };
+  }
+
+  for (const segment of timeline) {
+    if (elapsedMs >= segment.startMs && elapsedMs < segment.endMs) {
+      return {
+        index: segment.index,
+        segment,
+        segmentElapsedMs: elapsedMs - segment.startMs,
+        finished: false
+      };
+    }
+  }
+
+  const first = timeline[0];
+
+  return {
+    index: first.index,
+    segment: first,
+    segmentElapsedMs: 0,
+    finished: false
+  };
+}
+
 function format(totalSeconds) {
   const safe = Math.max(0, Math.floor(totalSeconds));
   const minutes = Math.floor(safe / 60);
   const seconds = safe % 60;
+
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function render() {
+function formatMs(ms) {
+  return format(Math.ceil(ms / 1000));
+}
+
+function getCurrentInfo() {
+  const elapsedMs = getElapsedMs();
+  return locateSegment(elapsedMs);
+}
+
+function getNextSegmentLabel(currentIndex) {
+  const timeline = buildTimelineWithStarts();
+
+  if (!timeline.length) return "NONE";
+
+  const nextIndex = currentIndex + 1;
+
+  if (nextIndex < timeline.length) {
+    return timeline[nextIndex].label;
+  }
+
+  if (workoutConfig?.loopBlocks) {
+    return timeline[0].label;
+  }
+
+  return "END OF WORKOUT";
+}
+
+function getRemainingMs() {
   const elapsedMs = getElapsedMs();
   const totalMs = getTotalDurationMs();
 
-  let remainingMs;
-
   if (workoutConfig?.loopBlocks && totalMs > 0) {
-    remainingMs = totalMs - elapsedMs;
-  } else {
-    remainingMs = Math.max(0, totalMs - elapsedMs);
+    return Math.max(0, totalMs - elapsedMs);
   }
 
-  timerEl.textContent = format(Math.ceil(remainingMs / 1000));
+  return Math.max(0, totalMs - elapsedMs);
+}
 
-  statusEl.textContent = state.paused
-    ? "Paused"
-    : "Running";
+function clampElapsedMs(value) {
+  const total = getTotalDurationMs();
 
-  debugEl.textContent = JSON.stringify({
-    state,
-    serverTimeOffset,
-    elapsedMs,
-    totalMs,
-    loopBlocks: workoutConfig?.loopBlocks === true
-  }, null, 2);
+  if (total <= 0) return 0;
+
+  if (workoutConfig?.loopBlocks) {
+    const wrapped = value % total;
+    return wrapped < 0 ? wrapped + total : wrapped;
+  }
+
+  return Math.max(0, Math.min(value, total));
+}
+
+function writeStateAtElapsed(targetElapsedMs) {
+  const safeElapsed = clampElapsedMs(targetElapsedMs);
+
+  if (state.paused) {
+    return db.ref("state").update({
+      paused: true,
+      elapsedMs: safeElapsed,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    }).catch(err => {
+      statusEl.textContent = "Navigation error: " + err.message;
+    });
+  }
+
+  return db.ref("state").update({
+    paused: false,
+    startAt: getServerNow() - safeElapsed,
+    elapsedMs: safeElapsed,
+    updatedAt: firebase.database.ServerValue.TIMESTAMP
+  }).catch(err => {
+    statusEl.textContent = "Navigation error: " + err.message;
+  });
 }
 
 function playWorkout() {
-  const elapsedMs = getElapsedMs();
+  let elapsedMs = getElapsedMs();
+  const totalMs = getTotalDurationMs();
+
+  if (!workoutConfig?.loopBlocks && totalMs > 0 && elapsedMs >= totalMs) {
+    elapsedMs = 0;
+  }
 
   db.ref("state").update({
     paused: false,
-    startAt: firebase.database.ServerValue.TIMESTAMP,
+    startAt: getServerNow() - elapsedMs,
     elapsedMs,
     updatedAt: firebase.database.ServerValue.TIMESTAMP
-  }).then(() => {
-    /*
-      Important:
-      ServerValue.TIMESTAMP becomes the timestamp of the write.
-      Displays use startAt + elapsedMs correction by subtracting elapsedMs.
-      We store elapsedMs separately so resume does not lose place.
-    */
-    return db.ref("state").once("value");
-  }).then(snap => {
-    const data = snap.val() || {};
-    if (data.startAt && elapsedMs > 0) {
-      return db.ref("state").update({
-        startAt: data.startAt - elapsedMs
-      });
-    }
   }).catch(err => {
     statusEl.textContent = "Play error: " + err.message;
   });
@@ -327,24 +586,168 @@ function resetWorkout() {
   });
 }
 
-function skipSeconds(seconds) {
-  const total = getTotalDurationMs();
-  const nextElapsed = Math.max(0, Math.min(getElapsedMs() + seconds * 1000, total));
+function previousSection() {
+  const timeline = buildTimelineWithStarts();
+  if (!timeline.length) return;
 
-  if (state.paused) {
-    db.ref("state").update({
-      paused: true,
-      elapsedMs: nextElapsed,
-      updatedAt: firebase.database.ServerValue.TIMESTAMP
-    });
-  } else {
-    db.ref("state").update({
-      paused: false,
-      startAt: getServerNow() - nextElapsed,
-      elapsedMs: nextElapsed,
-      updatedAt: firebase.database.ServerValue.TIMESTAMP
-    });
+  const info = getCurrentInfo();
+  const previousIndex = Math.max(0, info.index - 1);
+  const target = timeline[previousIndex];
+
+  if (target) {
+    writeStateAtElapsed(target.startMs);
   }
+}
+
+function restartSection() {
+  const timeline = buildTimelineWithStarts();
+  if (!timeline.length) return;
+
+  const info = getCurrentInfo();
+  const current = timeline[info.index];
+
+  if (current) {
+    writeStateAtElapsed(current.startMs);
+  }
+}
+
+function nextSection() {
+  const timeline = buildTimelineWithStarts();
+  if (!timeline.length) return;
+
+  const info = getCurrentInfo();
+  let nextIndex = info.index + 1;
+
+  if (nextIndex >= timeline.length) {
+    if (workoutConfig?.loopBlocks) {
+      nextIndex = 0;
+    } else {
+      writeStateAtElapsed(getTotalDurationMs());
+      return;
+    }
+  }
+
+  const target = timeline[nextIndex];
+
+  if (target) {
+    writeStateAtElapsed(target.startMs);
+  }
+}
+
+function findFirstWorkSegmentOfBlock(blockIndex) {
+  const timeline = buildTimelineWithStarts();
+
+  return timeline.find(segment => {
+    return segment.kind === "work" && segment.blockIndex === blockIndex;
+  });
+}
+
+function previousBlock() {
+  const timeline = buildTimelineWithStarts();
+  if (!timeline.length) return;
+
+  const info = getCurrentInfo();
+  const currentBlockIndex = info.segment?.blockIndex;
+
+  if (currentBlockIndex === null || currentBlockIndex === undefined) {
+    const firstWork = timeline.find(segment => segment.kind === "work");
+
+    if (firstWork) {
+      writeStateAtElapsed(firstWork.startMs);
+    }
+
+    return;
+  }
+
+  let targetBlockIndex = currentBlockIndex - 1;
+
+  if (targetBlockIndex < 0) {
+    if (workoutConfig?.loopBlocks) {
+      targetBlockIndex = 5;
+    } else {
+      targetBlockIndex = 0;
+    }
+  }
+
+  const target = findFirstWorkSegmentOfBlock(targetBlockIndex);
+
+  if (target) {
+    writeStateAtElapsed(target.startMs);
+  }
+}
+
+function nextBlock() {
+  const timeline = buildTimelineWithStarts();
+  if (!timeline.length) return;
+
+  const info = getCurrentInfo();
+  const currentBlockIndex = info.segment?.blockIndex;
+
+  let targetBlockIndex;
+
+  if (currentBlockIndex === null || currentBlockIndex === undefined) {
+    targetBlockIndex = 0;
+  } else {
+    targetBlockIndex = currentBlockIndex + 1;
+  }
+
+  if (targetBlockIndex > 5) {
+    if (workoutConfig?.loopBlocks) {
+      targetBlockIndex = 0;
+    } else {
+      const cooldown = timeline.find(segment => segment.kind === "cooldown");
+
+      if (cooldown) {
+        writeStateAtElapsed(cooldown.startMs);
+        return;
+      }
+
+      writeStateAtElapsed(getTotalDurationMs());
+      return;
+    }
+  }
+
+  const target = findFirstWorkSegmentOfBlock(targetBlockIndex);
+
+  if (target) {
+    writeStateAtElapsed(target.startMs);
+  }
+}
+
+function render() {
+  const elapsedMs = getElapsedMs();
+  const totalMs = getTotalDurationMs();
+  const remainingMs = getRemainingMs();
+  const info = locateSegment(elapsedMs);
+  const segment = info.segment;
+
+  timerEl.textContent = formatMs(remainingMs);
+
+  statusEl.textContent = state.paused
+    ? "Paused"
+    : "Running";
+
+  currentSectionEl.textContent = segment
+    ? segment.label
+    : "NO WORKOUT LOADED";
+
+  nextSectionLabelEl.textContent = segment
+    ? getNextSegmentLabel(info.index)
+    : "NONE";
+
+  elapsedLabelEl.textContent = formatMs(elapsedMs);
+  totalLabelEl.textContent = formatMs(totalMs);
+
+  debugEl.textContent = JSON.stringify({
+    state,
+    serverTimeOffset,
+    elapsedMs,
+    remainingMs,
+    totalMs,
+    currentIndex: info.index,
+    currentSegment: segment,
+    loopBlocks: workoutConfig?.loopBlocks === true
+  }, null, 2);
 }
 
 db.ref(".info/serverTimeOffset").on("value", snap => {
