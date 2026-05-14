@@ -9,7 +9,7 @@ body{
   background:#111;
   color:#fff;
   padding:24px;
-  max-width:1000px;
+  max-width:1200px;
   margin:0 auto;
 }
 
@@ -103,9 +103,118 @@ button.warning{
   white-space:pre-line;
 }
 
+.stationGrid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(220px,1fr));
+  gap:12px;
+}
+
+.stationCard{
+  background:#101010;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:14px;
+}
+
+.stationTitle{
+  font-size:20px;
+  font-weight:bold;
+  margin-bottom:10px;
+}
+
+.movementLine{
+  font-size:16px;
+  line-height:1.35;
+  margin:7px 0;
+}
+
+.movementLabel{
+  color:#999;
+  font-weight:bold;
+  display:inline-block;
+  width:24px;
+}
+
+.blockOverviewGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(300px,1fr));
+  gap:14px;
+}
+
+.blockCard{
+  background:#101010;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:14px;
+}
+
+.blockHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:12px;
+}
+
+.blockTitle{
+  font-size:22px;
+  font-weight:bold;
+}
+
+.blockMeta{
+  color:#aaa;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.changeBadge{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:bold;
+  margin-left:6px;
+}
+
+.changeBadge.changed{
+  background:#2b3d12;
+  color:#d8ff9a;
+  border:1px solid #526d25;
+}
+
+.changeBadge.same{
+  background:#222;
+  color:#aaa;
+  border:1px solid #444;
+}
+
+.stationMini{
+  border-top:1px solid #292929;
+  padding-top:10px;
+  margin-top:10px;
+}
+
+.stationMiniTitle{
+  font-weight:bold;
+  font-size:15px;
+  margin-bottom:6px;
+}
+
 .small{
   color:#aaa;
   font-size:14px;
+}
+
+.muted{
+  color:#888;
+}
+
+.emptyNotice{
+  color:#aaa;
+  background:#101010;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:14px;
 }
 
 pre{
@@ -118,8 +227,17 @@ pre{
   color:#ccc;
 }
 
+@media(max-width:1000px){
+  .stationGrid,
+  .blockOverviewGrid{
+    grid-template-columns:repeat(2,minmax(220px,1fr));
+  }
+}
+
 @media(max-width:700px){
-  .infoGrid{
+  .infoGrid,
+  .stationGrid,
+  .blockOverviewGrid{
     grid-template-columns:1fr;
   }
 
@@ -165,8 +283,7 @@ pre{
   </div>
 
   <p class="small">
-    This controller jumps by workout sections instead of moving by random seconds.
-    The displays stay synced because all screens still calculate from Firebase server time.
+    This controller uses Firebase server time so all displays calculate from the same clock.
   </p>
 </div>
 
@@ -197,6 +314,30 @@ pre{
 </div>
 
 <div class="panel">
+  <h2>Current Station Assignments</h2>
+  <p class="small">
+    These are the movement names currently assigned to each station for the active block.
+  </p>
+  <div id="currentStations"></div>
+</div>
+
+<div class="panel">
+  <h2>Next Block Preview</h2>
+  <p class="small">
+    This helps trainers see what is coming next before the screens change.
+  </p>
+  <div id="nextBlockPreview"></div>
+</div>
+
+<div class="panel">
+  <h2>Full Workout Block Overview</h2>
+  <p class="small">
+    Shows every block, every station, and whether that station changes compared with the previous block.
+  </p>
+  <div id="allBlocksOverview"></div>
+</div>
+
+<div class="panel">
   <h2>State Debug</h2>
   <pre id="debug">{}</pre>
 </div>
@@ -216,6 +357,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+const DEFAULT_STATION_COUNT = 4;
+
 const timerEl = document.getElementById("timer");
 const statusEl = document.getElementById("status");
 const debugEl = document.getElementById("debug");
@@ -224,6 +367,10 @@ const currentSectionEl = document.getElementById("currentSection");
 const nextSectionLabelEl = document.getElementById("nextSectionLabel");
 const elapsedLabelEl = document.getElementById("elapsedLabel");
 const totalLabelEl = document.getElementById("totalLabel");
+
+const currentStationsEl = document.getElementById("currentStations");
+const nextBlockPreviewEl = document.getElementById("nextBlockPreview");
+const allBlocksOverviewEl = document.getElementById("allBlocksOverview");
 
 let workoutConfig = null;
 
@@ -241,12 +388,25 @@ function numberOrDefault(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function cleanName(value) {
+  if (!value) return "";
+  const fileName = String(value).split("/").pop() || value;
+  return decodeURIComponent(fileName).replace(/\.[^/.]+$/, "");
+}
+
 function emptyAction() {
   return {
     source: "firebase",
     path: "",
     name: ""
   };
+}
+
+function defaultStations() {
+  return Array.from({ length: DEFAULT_STATION_COUNT }, () => [
+    emptyAction(),
+    emptyAction()
+  ]);
 }
 
 function defaultWorkoutConfig() {
@@ -258,27 +418,69 @@ function defaultWorkoutConfig() {
     cooldownSeconds: 180,
     warmupPath: "",
     cooldownPath: "",
+    stationCount: DEFAULT_STATION_COUNT,
     blocks: Array.from({ length: 6 }, () => ({
       workSeconds: 45,
       restSeconds: 15,
       rounds: 3,
       breakSeconds: 0,
-      stations: [
-        [emptyAction(), emptyAction()],
-        [emptyAction(), emptyAction()],
-        [emptyAction(), emptyAction()]
-      ]
+      stations: defaultStations()
     }))
+  };
+}
+
+function getStationCount() {
+  const fromConfig = Number(workoutConfig?.stationCount);
+
+  if (Number.isFinite(fromConfig) && fromConfig > 0) {
+    return fromConfig;
+  }
+
+  const blocks = workoutConfig?.blocks || [];
+
+  const maxFromBlocks = blocks.reduce((max, block) => {
+    const count = Array.isArray(block?.stations) ? block.stations.length : 0;
+    return Math.max(max, count);
+  }, 0);
+
+  return maxFromBlocks || DEFAULT_STATION_COUNT;
+}
+
+function normalizeAction(value) {
+  if (!value) return emptyAction();
+
+  if (typeof value === "string") {
+    return {
+      source: "firebase",
+      path: value,
+      name: cleanName(value)
+    };
+  }
+
+  if (value.source === "ymove") {
+    return {
+      source: "firebase",
+      path: "",
+      name: value.name || "Removed YMove Exercise"
+    };
+  }
+
+  return {
+    source: "firebase",
+    path: value.path || "",
+    name: value.name || cleanName(value.path || "")
   };
 }
 
 function normalizeConfig(config) {
   const base = defaultWorkoutConfig();
   const incoming = config || {};
+  const stationCount = Number(incoming.stationCount) || DEFAULT_STATION_COUNT;
 
   const normalized = {
     ...base,
     ...incoming,
+    stationCount,
     includeWarmup: incoming.includeWarmup !== undefined ? incoming.includeWarmup : base.includeWarmup,
     includeCooldown: incoming.includeCooldown !== undefined ? incoming.includeCooldown : base.includeCooldown,
     loopBlocks: incoming.loopBlocks !== undefined ? incoming.loopBlocks : base.loopBlocks,
@@ -288,15 +490,30 @@ function normalizeConfig(config) {
   for (let i = 0; i < 6; i += 1) {
     const oldBlock = incoming.blocks?.[i];
 
-    normalized.blocks.push({
+    const block = {
       ...base.blocks[i],
       ...(oldBlock || {}),
       workSeconds: numberOrDefault(oldBlock?.workSeconds, base.blocks[i].workSeconds),
       restSeconds: numberOrDefault(oldBlock?.restSeconds, base.blocks[i].restSeconds),
       rounds: numberOrDefault(oldBlock?.rounds, base.blocks[i].rounds),
       breakSeconds: numberOrDefault(oldBlock?.breakSeconds, base.blocks[i].breakSeconds),
-      stations: oldBlock?.stations || base.blocks[i].stations
-    });
+      stations: []
+    };
+
+    for (let station = 0; station < stationCount; station += 1) {
+      const stationValue = oldBlock?.stations?.[station];
+
+      if (Array.isArray(stationValue)) {
+        block.stations.push([
+          normalizeAction(stationValue[0]),
+          normalizeAction(stationValue[1])
+        ]);
+      } else {
+        block.stations.push([emptyAction(), emptyAction()]);
+      }
+    }
+
+    normalized.blocks.push(block);
   }
 
   return normalized;
@@ -663,7 +880,7 @@ function previousBlock() {
 
   if (targetBlockIndex < 0) {
     if (workoutConfig?.loopBlocks) {
-      targetBlockIndex = 5;
+      targetBlockIndex = (workoutConfig.blocks || []).length - 1;
     } else {
       targetBlockIndex = 0;
     }
@@ -682,6 +899,7 @@ function nextBlock() {
 
   const info = getCurrentInfo();
   const currentBlockIndex = info.segment?.blockIndex;
+  const blockCount = (workoutConfig?.blocks || []).length;
 
   let targetBlockIndex;
 
@@ -691,7 +909,7 @@ function nextBlock() {
     targetBlockIndex = currentBlockIndex + 1;
   }
 
-  if (targetBlockIndex > 5) {
+  if (targetBlockIndex >= blockCount) {
     if (workoutConfig?.loopBlocks) {
       targetBlockIndex = 0;
     } else {
@@ -712,6 +930,218 @@ function nextBlock() {
   if (target) {
     writeStateAtElapsed(target.startMs);
   }
+}
+
+function actionDisplayName(action) {
+  const normalized = normalizeAction(action);
+
+  return normalized.name || cleanName(normalized.path || "") || "Missing movement";
+}
+
+function getStationAssignment(blockIndex, stationIndex) {
+  const block = workoutConfig?.blocks?.[blockIndex];
+  const station = block?.stations?.[stationIndex];
+
+  if (!Array.isArray(station)) {
+    return {
+      a: "Missing movement",
+      b: "Missing movement"
+    };
+  }
+
+  return {
+    a: actionDisplayName(station[0]),
+    b: actionDisplayName(station[1])
+  };
+}
+
+function stationKey(assignment) {
+  return `${assignment.a}|||${assignment.b}`;
+}
+
+function renderStationCards(blockIndex, container, options = {}) {
+  const stationCount = getStationCount();
+
+  if (blockIndex === null || blockIndex === undefined || !workoutConfig?.blocks?.[blockIndex]) {
+    container.innerHTML = `
+      <div class="emptyNotice">
+        ${options.emptyText || "No station assignments for this section."}
+      </div>
+    `;
+    return;
+  }
+
+  const previousBlockIndex = blockIndex - 1;
+
+  let html = `<div class="stationGrid">`;
+
+  for (let station = 0; station < stationCount; station += 1) {
+    const assignment = getStationAssignment(blockIndex, station);
+    const previousAssignment = previousBlockIndex >= 0
+      ? getStationAssignment(previousBlockIndex, station)
+      : null;
+
+    let badge = "";
+
+    if (previousAssignment) {
+      const changed = stationKey(assignment) !== stationKey(previousAssignment);
+      badge = changed
+        ? `<span class="changeBadge changed">Changed</span>`
+        : `<span class="changeBadge same">Same</span>`;
+    }
+
+    html += `
+      <div class="stationCard">
+        <div class="stationTitle">Station ${station + 1} ${badge}</div>
+        <div class="movementLine"><span class="movementLabel">A:</span> ${escapeHtml(assignment.a)}</div>
+        <div class="movementLine"><span class="movementLabel">B:</span> ${escapeHtml(assignment.b)}</div>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function findNextBlockIndex(currentBlockIndex) {
+  const blockCount = (workoutConfig?.blocks || []).length;
+
+  if (!blockCount) return null;
+
+  if (currentBlockIndex === null || currentBlockIndex === undefined) {
+    return 0;
+  }
+
+  const next = currentBlockIndex + 1;
+
+  if (next < blockCount) return next;
+
+  if (workoutConfig?.loopBlocks) return 0;
+
+  return null;
+}
+
+function renderCurrentStationAssignments(segment) {
+  if (!segment || segment.blockIndex === null || segment.blockIndex === undefined) {
+    currentStationsEl.innerHTML = `
+      <div class="emptyNotice">
+        Current section is warmup, cooldown, or a non-block section. No station assignments are active yet.
+      </div>
+    `;
+    return;
+  }
+
+  renderStationCards(segment.blockIndex, currentStationsEl, {
+    emptyText: "No station assignments are active yet."
+  });
+}
+
+function renderNextBlockPreview(segment) {
+  const currentBlockIndex = segment?.blockIndex;
+  const nextBlockIndex = findNextBlockIndex(currentBlockIndex);
+
+  if (nextBlockIndex === null || nextBlockIndex === undefined) {
+    nextBlockPreviewEl.innerHTML = `
+      <div class="emptyNotice">
+        No next block. This workout is near the end.
+      </div>
+    `;
+    return;
+  }
+
+  const block = workoutConfig?.blocks?.[nextBlockIndex];
+
+  if (!block) {
+    nextBlockPreviewEl.innerHTML = `
+      <div class="emptyNotice">
+        No next block found.
+      </div>
+    `;
+    return;
+  }
+
+  const header = `
+    <div class="blockMeta" style="margin-bottom:12px;">
+      Next Block: <strong>Block ${nextBlockIndex + 1}</strong><br>
+      Work: ${numberOrDefault(block.workSeconds, 45)}s •
+      Rest: ${numberOrDefault(block.restSeconds, 15)}s •
+      Rounds: ${numberOrDefault(block.rounds, 3)} •
+      Break After: ${numberOrDefault(block.breakSeconds, 0)}s
+    </div>
+  `;
+
+  const temp = document.createElement("div");
+  renderStationCards(nextBlockIndex, temp);
+
+  nextBlockPreviewEl.innerHTML = header + temp.innerHTML;
+}
+
+function renderAllBlocksOverview() {
+  const blocks = workoutConfig?.blocks || [];
+  const stationCount = getStationCount();
+
+  if (!blocks.length) {
+    allBlocksOverviewEl.innerHTML = `
+      <div class="emptyNotice">No blocks loaded.</div>
+    `;
+    return;
+  }
+
+  let html = `<div class="blockOverviewGrid">`;
+
+  blocks.forEach((block, blockIndex) => {
+    html += `
+      <div class="blockCard">
+        <div class="blockHeader">
+          <div>
+            <div class="blockTitle">Block ${blockIndex + 1}</div>
+            <div class="blockMeta">
+              Work: ${numberOrDefault(block.workSeconds, 45)}s •
+              Rest: ${numberOrDefault(block.restSeconds, 15)}s •
+              Rounds: ${numberOrDefault(block.rounds, 3)} •
+              Break: ${numberOrDefault(block.breakSeconds, 0)}s
+            </div>
+          </div>
+        </div>
+    `;
+
+    for (let station = 0; station < stationCount; station += 1) {
+      const assignment = getStationAssignment(blockIndex, station);
+
+      let badge = "";
+
+      if (blockIndex > 0) {
+        const previousAssignment = getStationAssignment(blockIndex - 1, station);
+        const changed = stationKey(assignment) !== stationKey(previousAssignment);
+
+        badge = changed
+          ? `<span class="changeBadge changed">Changed</span>`
+          : `<span class="changeBadge same">Same</span>`;
+      }
+
+      html += `
+        <div class="stationMini">
+          <div class="stationMiniTitle">Station ${station + 1} ${badge}</div>
+          <div class="movementLine"><span class="movementLabel">A:</span> ${escapeHtml(assignment.a)}</div>
+          <div class="movementLine"><span class="movementLabel">B:</span> ${escapeHtml(assignment.b)}</div>
+        </div>
+      `;
+    }
+
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+  allBlocksOverviewEl.innerHTML = html;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function render() {
@@ -738,6 +1168,10 @@ function render() {
   elapsedLabelEl.textContent = formatMs(elapsedMs);
   totalLabelEl.textContent = formatMs(totalMs);
 
+  renderCurrentStationAssignments(segment);
+  renderNextBlockPreview(segment);
+  renderAllBlocksOverview();
+
   debugEl.textContent = JSON.stringify({
     state,
     serverTimeOffset,
@@ -746,6 +1180,7 @@ function render() {
     totalMs,
     currentIndex: info.index,
     currentSegment: segment,
+    stationCount: getStationCount(),
     loopBlocks: workoutConfig?.loopBlocks === true
   }, null, 2);
 }
@@ -764,10 +1199,6 @@ db.ref("state").on("value", snap => {
     ...(snap.val() || {})
   };
 
-  /*
-    Backward compatibility:
-    If older state used elapsed instead of elapsedMs, convert it safely.
-  */
   if (!state.elapsedMs && state.elapsed) {
     state.elapsedMs = state.elapsed;
   }
