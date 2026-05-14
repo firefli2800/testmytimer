@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <title>Workout Builder</title>
-  <!-- force redeploy 2026-05-06 -->
 <style>
 body{
   font-family:Arial,sans-serif;
@@ -32,7 +31,7 @@ h1,h2,h3{
 
 .stationGrid{
   display:grid;
-  grid-template-columns:repeat(3,minmax(260px,1fr));
+  grid-template-columns:repeat(4,minmax(240px,1fr));
   gap:12px;
 }
 
@@ -168,7 +167,13 @@ small{
   line-height:1.35;
 }
 
-@media(max-width:1000px){
+@media(max-width:1200px){
+  .stationGrid{
+    grid-template-columns:repeat(2,minmax(260px,1fr));
+  }
+}
+
+@media(max-width:800px){
   .grid,.stationGrid,.previewGrid{
     grid-template-columns:1fr;
   }
@@ -180,7 +185,7 @@ small{
 <h1>Workout Builder</h1>
 <small>
   Firebase-only builder. Pick warmup, cooldown, and 2 actions per station from uploaded Firebase Storage videos.
-  Each movement now has a custom display name for the TV screens.
+  This version supports 4 display stations.
 </small>
 
 <div class="section">
@@ -301,6 +306,8 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const storage = firebase.storage();
 
+const STATION_COUNT = 4;
+
 const includeWarmupEl = document.getElementById("includeWarmup");
 const includeCooldownEl = document.getElementById("includeCooldown");
 const loopBlocksEl = document.getElementById("loopBlocks");
@@ -355,6 +362,13 @@ function firebaseAction(path, customName) {
   };
 }
 
+function defaultStations() {
+  return Array.from({ length: STATION_COUNT }, () => [
+    emptyAction(),
+    emptyAction()
+  ]);
+}
+
 function defaultConfig() {
   return {
     includeWarmup: true,
@@ -369,11 +383,7 @@ function defaultConfig() {
       restSeconds: 15,
       rounds: 3,
       breakSeconds: 0,
-      stations: [
-        [emptyAction(), emptyAction()],
-        [emptyAction(), emptyAction()],
-        [emptyAction(), emptyAction()]
-      ]
+      stations: defaultStations()
     }))
   };
 }
@@ -385,11 +395,6 @@ function normalizeAction(value) {
     return firebaseAction(value);
   }
 
-  /*
-    YMove removal:
-    If an old saved workout contains source:"ymove", we do NOT keep it.
-    This prevents old YMove exercises from silently staying in the builder.
-  */
   if (value.source === "ymove") {
     return emptyAction();
   }
@@ -418,13 +423,18 @@ function normalizeConfig(config) {
     const incomingBlock = incoming.blocks?.[blockIndex];
 
     if (Array.isArray(incomingBlock)) {
+      const stations = defaultStations();
+
+      for (let station = 0; station < Math.min(3, STATION_COUNT); station += 1) {
+        stations[station] = [
+          normalizeAction(incomingBlock[station]),
+          emptyAction()
+        ];
+      }
+
       normalized.blocks.push({
         ...base.blocks[blockIndex],
-        stations: [
-          [normalizeAction(incomingBlock[0]), emptyAction()],
-          [normalizeAction(incomingBlock[1]), emptyAction()],
-          [normalizeAction(incomingBlock[2]), emptyAction()]
-        ]
+        stations
       });
       continue;
     }
@@ -439,7 +449,7 @@ function normalizeConfig(config) {
       stations: []
     };
 
-    for (let station = 0; station < 3; station += 1) {
+    for (let station = 0; station < STATION_COUNT; station += 1) {
       const stationValue = incomingBlock?.stations?.[station];
 
       if (Array.isArray(stationValue)) {
@@ -493,8 +503,17 @@ function renderLibraryStatus() {
     <strong>${workoutFiles.length}</strong> workout videos loaded from Firebase Storage.<br>
     <strong>${warmupFiles.length}</strong> warmup videos loaded.<br>
     <strong>${cooldownFiles.length}</strong> cooldown videos loaded.<br>
-    <small>YMove has been removed from builder selections.</small>
+    <small>YMove has been removed from builder selections. Current builder supports ${STATION_COUNT} stations.</small>
   `;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function buildBlocksUI() {
@@ -543,7 +562,7 @@ function buildBlocksUI() {
 
     const stationContainer = document.getElementById(`block_${block}_stations`);
 
-    for (let station = 0; station < 3; station += 1) {
+    for (let station = 0; station < STATION_COUNT; station += 1) {
       const box = document.createElement("div");
       box.className = "stationBox";
       box.innerHTML = `<h3>Station ${station + 1}</h3>`;
@@ -596,15 +615,6 @@ function buildBlocksUI() {
       stationContainer.appendChild(box);
     }
   }
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function populateActionSelect(block, station, action, selectedAction) {
@@ -672,10 +682,6 @@ function onActionSelectChange(block, station, action) {
 
   const selectedPath = select.value;
 
-  /*
-    When a new video is selected, auto-fill the display name from the file name.
-    The user can still edit it after.
-  */
   nameInput.value = selectedPath ? cleanName(selectedPath) : "";
 
   previewAction(block, station, action);
@@ -744,7 +750,7 @@ function setPreview(slotLabel, displayName, path, url) {
 function copyBlockToNext(block) {
   if (block >= 5) return;
 
-  for (let station = 0; station < 3; station += 1) {
+  for (let station = 0; station < STATION_COUNT; station += 1) {
     for (let action = 0; action < 2; action += 1) {
       const sourceSelect = getActionSelect(block, station, action);
       const sourceName = getActionNameInput(block, station, action);
@@ -762,7 +768,7 @@ function copyBlockToNext(block) {
 
 function copyBlockGroup(sourceBlock, targetBlocks) {
   targetBlocks.forEach(targetBlock => {
-    for (let station = 0; station < 3; station += 1) {
+    for (let station = 0; station < STATION_COUNT; station += 1) {
       for (let action = 0; action < 2; action += 1) {
         const sourceSelect = getActionSelect(sourceBlock, station, action);
         const sourceName = getActionNameInput(sourceBlock, station, action);
@@ -785,7 +791,7 @@ function saveWorkout() {
   for (let block = 0; block < 6; block += 1) {
     const stations = [];
 
-    for (let station = 0; station < 3; station += 1) {
+    for (let station = 0; station < STATION_COUNT; station += 1) {
       const actionA = getActionFromUI(block, station, 0);
       const actionB = getActionFromUI(block, station, 1);
 
@@ -825,13 +831,14 @@ function saveWorkout() {
     warmupPath: warmupSelect.value,
     cooldownPath: cooldownSelect.value,
     blocks,
+    stationCount: STATION_COUNT,
     updatedAt: firebase.database.ServerValue.TIMESTAMP,
     videoSource: "firebase"
   };
 
   db.ref("workoutConfig").set(newConfig)
     .then(() => {
-      statusEl.textContent = "Workout saved. Custom display names are live.";
+      statusEl.textContent = "Workout saved. 4-station Firebase config is live.";
     })
     .catch((err) => {
       statusEl.textContent = "Error saving workout: " + err.message;
