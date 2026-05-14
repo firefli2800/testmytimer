@@ -225,9 +225,11 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const storage = firebase.storage();
 
+const STATION_COUNT = 4;
+
 const params = new URLSearchParams(window.location.search);
 const requestedScreen = parseInt(params.get("screen"), 10);
-const screenNumber = requestedScreen >= 1 && requestedScreen <= 3 ? requestedScreen : 1;
+const screenNumber = requestedScreen >= 1 && requestedScreen <= STATION_COUNT ? requestedScreen : 1;
 const screenIndex = screenNumber - 1;
 
 const appShell = document.getElementById("appShell");
@@ -278,6 +280,13 @@ function emptyAction() {
   };
 }
 
+function defaultStations() {
+  return Array.from({ length: STATION_COUNT }, () => [
+    emptyAction(),
+    emptyAction()
+  ]);
+}
+
 function defaultWorkoutConfig() {
   return {
     includeWarmup: true,
@@ -292,11 +301,7 @@ function defaultWorkoutConfig() {
       restSeconds: 15,
       rounds: 3,
       breakSeconds: 0,
-      stations: [
-        [emptyAction(), emptyAction()],
-        [emptyAction(), emptyAction()],
-        [emptyAction(), emptyAction()]
-      ]
+      stations: defaultStations()
     }))
   };
 }
@@ -318,11 +323,6 @@ function normalizeAction(value) {
     };
   }
 
-  /*
-    YMove removal:
-    If an old saved workout still has source:"ymove",
-    display treats it as missing instead of calling YMove.
-  */
   if (value.source === "ymove") {
     return {
       source: "firebase",
@@ -355,13 +355,18 @@ function normalizeConfig(config) {
     const oldBlock = incoming.blocks?.[i];
 
     if (Array.isArray(oldBlock)) {
+      const stations = defaultStations();
+
+      for (let station = 0; station < Math.min(3, STATION_COUNT); station += 1) {
+        stations[station] = [
+          normalizeAction(oldBlock[station]),
+          emptyAction()
+        ];
+      }
+
       normalized.blocks.push({
         ...base.blocks[i],
-        stations: [
-          [normalizeAction(oldBlock[0]), emptyAction()],
-          [normalizeAction(oldBlock[1]), emptyAction()],
-          [normalizeAction(oldBlock[2]), emptyAction()]
-        ]
+        stations
       });
     } else {
       const block = {
@@ -374,7 +379,7 @@ function normalizeConfig(config) {
         stations: []
       };
 
-      for (let station = 0; station < 3; station += 1) {
+      for (let station = 0; station < STATION_COUNT; station += 1) {
         const stationValue = oldBlock?.stations?.[station];
 
         if (Array.isArray(stationValue)) {
